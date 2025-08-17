@@ -1,32 +1,34 @@
 from ursina import *
-from player import Player
-from GameTile import GameTile
+from GameBoard import *
+from constants import *
 
 #This creates a window
 app = Ursina()
 
-#Game Constants
-GRID_SIZE = 8
-TILE_SIZE = 1
-GRID_COLOR = color.gray
-
-#Now we create a GameObject, these are called entities in ursina
-
-playerCharacter = Player()
-
-#update function is called every frame
-def update():
-    playerCharacter.x += held_keys['d'] * time.dt
-    playerCharacter.x -= held_keys['a'] * time.dt
-
-#this makes playerCharacter move left or right with input
-#we can check pressed keys using the held_keys dictionary
-#time.dt is time since last frame
+#Create our gameboard (A matrix of GameTiles)
+game = GameBoard()
 
 def input(key):
-    if key == 'space':
-        playerCharacter.y += 1
-        invoke(setattr, playerCharacter, 'y', playerCharacter.y-1, delay=.25)
+    if not game.player.is_moving:
+        x, y = game.player.grid_position
+
+        if key == 'w':
+            game.player.move_to_grid_position(x, y + 1)
+        elif key == 's':
+            game.player.move_to_grid_position(x, y - 1)
+        elif key == 'a':
+            game.player.move_to_grid_position(x - 1, y)
+        elif key == 'd':
+            game.player.move_to_grid_position(x + 1, y)
+    
+def update():
+    if mouse.hovered_entity and isinstance(mouse.hovered_entity, GameTile):
+        mouse.hovered_entity.highlight()
+        for tile in game.tiles:
+            if tile != mouse.hovered_entity:
+                tile.remove_highlight()
+
+
 
 #run game
 app.run()
