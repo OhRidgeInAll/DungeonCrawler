@@ -1,0 +1,30 @@
+# Python-specific files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python/
+env/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Ursina/Panda3D related
+*.bam
+*.egg
+*.prc
+log.sswg # Ursina's log file
+
+# Operating System specific
+.DS_Store
+Thumbs.db
+
+# IDE specific (if applicable)
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Build artifacts
+build/
+dist/
