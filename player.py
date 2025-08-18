@@ -11,12 +11,22 @@ class Player(Entity):
             color=color.azure,
             position=grid_to_world(GRID_SIZE // 2, GRID_SIZE // 2),  # Start in the center of the grid
             z=-0.1,  # Slightly above the grid
+            team=0
             )
+        self.health = 100
         self.grid_x = GRID_SIZE//2  # Integer grid column
         self.grid_y = GRID_SIZE//2  # Integer grid row
         self.target_position = self.position
         self.move_speed = 5
         self.is_moving = False
+
+        self.attack_shape = Entity(
+            parent=self,
+            movel=Circle(6, radius=0.4),
+            color=color.clear,
+            collider='mesh',
+            visible=False
+        )
     
     @property
     def grid_position(self):
@@ -33,6 +43,15 @@ class Player(Entity):
                 self.grid_y = y
                 self.target_position = grid_to_world(x, y)
                 self.is_moving = True
+
+    def try_attack(self):
+        for entity in self.attack_shape.intersects().entities:
+            if hasattr(entity, 'team') and entity.team != self.team:
+                self.attack(entity)
+                break
+
+    def attack(self, target):
+        print(f"Attacking {target}!")
 
     def update(self):
         if self.is_moving:

@@ -31,4 +31,6 @@ class CombatUI:
     
     def update(self, player):
         # Update health bar
-        self.health_bar.scale_x = 0.3 * health_pct
+        health_pct = player.health / 100.0
+        self.health_bar.scale_x = 0.3 * player.health_pct
+        self.health_text.text = f"{player.health}/100"

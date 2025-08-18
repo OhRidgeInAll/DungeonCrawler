@@ -1,12 +1,14 @@
 from ursina import *
 from GameBoard import *
 from constants import *
+from GameUI import CombatUI
 
 #This creates a window
 app = Ursina()
 
 #Create our gameboard (A matrix of GameTiles)
 game = GameBoard()
+ui = CombatUI()
 
 def input(key):
     if not game.player.is_moving:
@@ -27,7 +29,6 @@ def update():
         for tile in game.tiles:
             if tile != mouse.hovered_entity:
                 tile.remove_highlight()
-
 
 
 #run game
