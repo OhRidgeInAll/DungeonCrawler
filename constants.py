@@ -4,6 +4,8 @@ from ursina import *
 GRID_SIZE = 8
 TILE_SIZE = 1
 GRID_COLOR = color.gray
+COMBAT_RANGE = 1.5 #Grid Units
+ATTACK_COOLDOWN = 0.5 #seconds
 
 def grid_to_world(grid_x, grid_y):
     """Convert grid coordinates (0-7) to world space (-3.5 to 3.5)"""

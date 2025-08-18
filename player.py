@@ -24,10 +24,15 @@ class Player(Entity):
 
     def move_to_grid_position(self, x, y):
         if not self.is_moving:
-            self.grid_x = x
-            self.grid_y = y
-            self.target_position = grid_to_world(x, y)
-            self.is_moving = True
+            x = clamp(x, 0, GRID_SIZE - 1)
+            y = clamp(y, 0, GRID_SIZE - 1)
+
+            if (x, y) != (self.grid_x, self.grid_y):
+                # Convert grid coordinates to world position
+                self.grid_x = x
+                self.grid_y = y
+                self.target_position = grid_to_world(x, y)
+                self.is_moving = True
 
     def update(self):
         if self.is_moving:
