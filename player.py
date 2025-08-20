@@ -1,7 +1,8 @@
 from ursina import *
 from constants import *
+from Actor import *
 
-class Player(Entity):
+class Player(Actor):
     def __init__(self):
         # We're overriding the Entity class to create a Player class
         super().__init__(
@@ -17,7 +18,7 @@ class Player(Entity):
         self.grid_x = GRID_SIZE//2  # Integer grid column
         self.grid_y = GRID_SIZE//2  # Integer grid row
         self.target_position = self.position
-        self.move_speed = 5
+        self.move_speed = 50
         self.is_moving = False
 
         self.attack_shape = Entity(
@@ -50,12 +51,9 @@ class Player(Entity):
                 self.attack(entity)
                 break
 
-    def attack(self, target):
-        print(f"Attacking {target}!")
-
     def update(self):
         if self.is_moving:
-            self.position = lerp(self.position, self.target_position, time.dt * 10)
+            self.position = lerp(self.position, self.target_position, time.dt * self.move_speed)
 
             if (self.position - self.target_position).length() < 0.01:
                 self.position = self.target_position
