@@ -28,7 +28,6 @@ class ObstacleSpawner:
         return False
     
     def is_position_blocked(self, x, y):
-        print(self.obstacle_positions)
         return (x, y) in self.obstacle_positions
 
     def is_valid_position(self, x, y):
