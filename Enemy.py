@@ -1,5 +1,6 @@
 from ursina import *
 from constants import *
+from Actor import Actor
 
 class Enemy(Actor):
     def __init__(self, grid_x, grid_y):

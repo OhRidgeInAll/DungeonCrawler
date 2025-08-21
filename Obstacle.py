@@ -17,14 +17,20 @@ class ObstacleSpawner:
     def __init__(self, grid_size):
         self.grid_size = grid_size
         self.obstacles = []
+        self.obstacle_positions = set() # To track occupied positions
     
     def add_obstacle(self,x, y):
         if self.is_valid_position(x, y):
             obstacle = Obstacle(x, y)
             self.obstacles.append(obstacle)
+            self.obstacle_positions.add((x, y))
             return True
         return False
     
+    def is_position_blocked(self, x, y):
+        print(self.obstacle_positions)
+        return (x, y) in self.obstacle_positions
+
     def is_valid_position(self, x, y):
         return (0 <= x < self.grid_size and
                 0 <= y < self.grid_size and

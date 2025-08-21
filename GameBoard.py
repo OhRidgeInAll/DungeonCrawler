@@ -8,7 +8,7 @@ class GameBoard:
     def __init__(self):
         self.tiles = []
         self.obstacles = []
-        self.player = Player()
+        self.player = Player(self)
         self.current_turn = 0
         self.obstacle_spawner = ObstacleSpawner(GRID_SIZE)
         

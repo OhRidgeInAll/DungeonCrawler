@@ -1,4 +1,5 @@
 from ursina import *
+from constants import *
 
 class CombatUI:
     def __init__(self):

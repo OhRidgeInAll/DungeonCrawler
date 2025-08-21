@@ -3,9 +3,10 @@ from constants import *
 from Actor import *
 
 class Player(Actor):
-    def __init__(self):
+    def __init__(self, parent):
         # We're overriding the Entity class to create a Player class
         super().__init__(
+            game = parent,
             model='quad',
             #Our game is built around the tiles, our character should be slightly smaller than a tile
             scale=(TILE_SIZE*0.8, TILE_SIZE*0.8),
@@ -34,7 +35,7 @@ class Player(Actor):
         return (self.grid_x, self.grid_y)
 
     def move_to_grid_position(self, x, y):
-        if not self.is_moving:
+        if not self.is_moving and self.can_move_to(x, y):
             x = clamp(x, 0, GRID_SIZE - 1)
             y = clamp(y, 0, GRID_SIZE - 1)
 
@@ -44,6 +45,11 @@ class Player(Actor):
                 self.grid_y = y
                 self.target_position = grid_to_world(x, y)
                 self.is_moving = True
+
+    def can_move_to(self, x, y):
+        return (0 <= x < GRID_SIZE and
+                0 <= y < GRID_SIZE and
+                not self.game.obstacle_spawner.is_position_blocked(x, y))
 
     def try_attack(self):
         for entity in self.attack_shape.intersects().entities:
