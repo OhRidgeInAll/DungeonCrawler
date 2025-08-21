@@ -34,3 +34,10 @@ class CombatUI:
         health_pct = player.health / 100.0
         self.health_bar.scale_x = 0.3 * player.health_pct
         self.health_text.text = f"{player.health}/100"
+
+        if player.attack_cooldown > 0:
+            self.cooldown_indicator.color = color.gray
+            self.cooldown_indicator.scale = 0.03 * (player.attack_cooldown / ATTACK_COOLDOWN)
+        else:
+            self.cooldown_indicator.color = color.yellow
+            self.cooldown_indicator.scale = 0.03
