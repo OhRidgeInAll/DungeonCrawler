@@ -2,6 +2,7 @@ from ursina import *
 from player import *
 from GameTile import GameTile
 from constants import *
+from Obstacle import *
 
 class GameBoard:
     def __init__(self):
@@ -9,7 +10,9 @@ class GameBoard:
         self.obstacles = []
         self.player = Player()
         self.current_turn = 0
-
+        self.obstacle_spawner = ObstacleSpawner(GRID_SIZE)
+        
+        self.obstacle_spawner.generate_obstacles(5)  # Generate 5 random obstacles
         self.create_grid()
 
         self.turn_text = Text(
