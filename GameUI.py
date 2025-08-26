@@ -33,7 +33,7 @@ class CombatUI:
     def update(self, player):
         # Update health bar
         health_pct = player.health / 100.0
-        self.health_bar.scale_x = 0.3 * player.health_pct
+        self.health_bar.scale_x = 0.3 * health_pct
         self.health_text.text = f"{player.health}/100"
 
         if player.attack_cooldown > 0:

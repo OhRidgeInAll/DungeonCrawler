@@ -1,6 +1,7 @@
 from ursina import *
 from constants import *
 from Actor import *
+from SpriteSheet import *
 
 class Player(Actor):
     def __init__(self, parent):
@@ -8,9 +9,8 @@ class Player(Actor):
         super().__init__(
             game = parent,
             model='quad',
+            texture = 'assets/Robot.png',
             #Our game is built around the tiles, our character should be slightly smaller than a tile
-            scale=(TILE_SIZE*0.8, TILE_SIZE*0.8),
-            color=color.azure,
             position=grid_to_world(GRID_SIZE // 2, GRID_SIZE // 2),  # Start in the center of the grid
             z=-0.1,  # Slightly above the grid
             team=0

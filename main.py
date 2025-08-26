@@ -29,6 +29,7 @@ def update():
         for tile in game.tiles:
             if tile != mouse.hovered_entity:
                 tile.remove_highlight()
+    ui.update(game.player)
 
 
 #run game
