@@ -11,24 +11,39 @@ game = GameBoard()
 ui = CombatUI()
 
 def input(key):
-    if not game.player.is_moving:
-        x, y = game.player.grid_position
-
-        if key == 'w':
-            game.player.move_to_grid_position(x, y + 1)
-        elif key == 's':
-            game.player.move_to_grid_position(x, y - 1)
-        elif key == 'a':
-            game.player.move_to_grid_position(x - 1, y)
-        elif key == 'd':
-            game.player.move_to_grid_position(x + 1, y)
+    # Handle movement keys - queue actions instead of immediate movement
+    x, y = game.player.grid_position
+    
+    if key == 'w':
+        game.queue_player_action('move', x, y + 1)
+        game.process_turn()
+    elif key == 's':
+        game.queue_player_action('move', x, y - 1)
+        game.process_turn()
+    elif key == 'a':
+        game.queue_player_action('move', x - 1, y)
+        game.process_turn()
+    elif key == 'd':
+        game.queue_player_action('move', x + 1, y)
+        game.process_turn()
+    
+    # Space for attack
+    elif key == 'space':
+        game.player.try_attack()
+        game.process_turn()
     
 def update():
+    # Update game state
+    game.update()
+    
+    # Tile highlighting
     if mouse.hovered_entity and isinstance(mouse.hovered_entity, GameTile):
         mouse.hovered_entity.highlight()
         for tile in game.tiles:
             if tile != mouse.hovered_entity:
                 tile.remove_highlight()
+    
+    # Update UI
     ui.update(game.player)
 
 

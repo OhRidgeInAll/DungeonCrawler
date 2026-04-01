@@ -32,3 +32,4 @@ test_bounds.py
 test_movement.py
 test_simple.py
 debug_roomgen.py
+test_integration.py

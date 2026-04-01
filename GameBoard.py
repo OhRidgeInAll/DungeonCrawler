@@ -4,6 +4,7 @@ from GameTile import GameTile
 from constants import *
 from Obstacle import *
 from Room import RoomGenerator
+from Enemy import Enemy
 
 class GameBoard:
     def __init__(self):
@@ -11,7 +12,7 @@ class GameBoard:
         self.obstacles = []
         self.rooms = []
         self.corridors = []
-        self.enemies = []  #Placeholder for implementation
+        self.enemies = []  # Will contain Enemy instances
         
         # Rooms
         self.room_generator = RoomGenerator(max_grid_size=20)
@@ -29,9 +30,14 @@ class GameBoard:
         
         self._generate_room_obstacles()
         
+        # enemies spawn in non starting rooms
+        self._spawn_enemies()
+        
         # player
         self.player = Player(self)
         self.current_turn = 0
+        self.turn_in_progress = False
+        self.action_queue = []
         
         # tiles (rooms + corridors) (Not obstacles)
         self.create_dungeon_tiles()
@@ -81,6 +87,95 @@ class GameBoard:
             scale=2,
             color=color.white
         )
+    
+    def _spawn_enemies(self):
+        """Spawn enemies in non-starting rooms."""
+        if len(self.rooms) < 2:
+            return
+            
+        # Spawn 1-2 enemies per room (skip starting room)
+        for room in self.rooms[1:]:  # Skip first room (starting room)
+            room_tiles = list(room.get_tiles())
+            room_size = len(room_tiles)
+            
+            # Determine how many enemies to spawn (1-2, fewer for small rooms)
+            max_enemies = min(2, room_size // 15)
+            if max_enemies < 1:
+                max_enemies = 1
+                
+            num_enemies = random.randint(1, max_enemies)
+            placed = 0
+            attempts = 0
+            
+            while placed < num_enemies and attempts < 50:
+                tx, ty = random.choice(room_tiles)
+                
+                # Don't spawn on doors or obstacles
+                if (tx, ty) in room.doors or self.is_position_blocked(tx, ty):
+                    attempts += 1
+                    continue
+                
+                position_occupied = False
+                for enemy in self.enemies:
+                    if enemy.grid_x == tx and enemy.grid_y == ty:
+                        position_occupied = True
+                        break
+                
+                if not position_occupied:
+                    enemy = Enemy(tx, ty, self)
+                    self.enemies.append(enemy)
+                    placed += 1
+                    print(f"Enemy spawned at ({tx}, {ty}) in room {room}")
+                
+                attempts += 1
+    
+    def process_turn(self):
+        """Process a complete turn: player action, then enemy actions."""
+        if self.turn_in_progress:
+            return
+            
+        self.turn_in_progress = True
+        
+        self.current_turn += 1
+        self.turn_text.text = f"Turn: {self.current_turn}"
+        
+        # Process queued player action first
+        if self.action_queue:
+            action = self.action_queue.pop(0)
+            action_type, *args = action
+            
+            if action_type == 'move':
+                x, y = args
+                self.player.move_to_grid_position(x, y)
+            # Could add other action types (attack, etc.)
+        
+        # Wait for player movement to complete before enemies move
+        invoke(self._process_enemy_turns, delay=0.1)
+    
+    def _process_enemy_turns(self):
+        """Process all enemy turns after player action."""
+        # Let enemies take their turns
+        for enemy in self.enemies:
+            enemy.take_turn()
+        
+        self.turn_in_progress = False
+    
+    def queue_player_action(self, action_type, *args):
+        """Queue a player action for the next turn."""
+        self.action_queue.append((action_type, *args))
+    
+    def update(self):
+        """Update game state - called every frame."""
+        # Check if all entities are done moving
+        all_done = not self.player.is_moving
+        for enemy in self.enemies:
+            if enemy.is_moving:
+                all_done = False
+                break
+        
+        #Turn complete if all done (wait for anims/actions to finish)
+        if self.turn_in_progress and all_done:
+            self.turn_in_progress = False
     
     def create_dungeon_tiles(self):
         """Create tiles for all rooms and corridors in the dungeon."""
