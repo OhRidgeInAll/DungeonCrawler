@@ -1,23 +1,24 @@
 from ursina import *
-from constants import *
+import constants
 from Actor import *
 from SpriteSheet import *
 
 class Player(Actor):
     def __init__(self, parent):
+        # Position will be set by GameBoard after dungeon generation
         # We're overriding the Entity class to create a Player class
         super().__init__(
             game = parent,
             model='quad',
             texture = 'assets/Robot.png',
-            #Our game is built around the tiles, our character should be slightly smaller than a tile
-            position=grid_to_world(GRID_SIZE // 2, GRID_SIZE // 2),  # Start in the center of the grid
+            # Position set by gameboard
+            position=(0, 0, -0.1),  # Temporary position
             z=-0.1,  # Slightly above the grid
             team=0
             )
         self.health = 100
-        self.grid_x = GRID_SIZE//2  # Integer grid column
-        self.grid_y = GRID_SIZE//2  # Integer grid row
+        self.grid_x = 0  # temp, will be set by gameboard (both x,y)
+        self.grid_y = 0
         self.target_position = self.position
         self.move_speed = 50
         self.is_moving = False
@@ -36,20 +37,31 @@ class Player(Actor):
 
     def move_to_grid_position(self, x, y):
         if not self.is_moving and self.can_move_to(x, y):
-            x = clamp(x, 0, GRID_SIZE - 1)
-            y = clamp(y, 0, GRID_SIZE - 1)
+            # Get bounds for clamp
+            if constants.DUNGEON_BOUNDS is not None:
+                min_x, min_y, max_x, max_y = constants.DUNGEON_BOUNDS
+                x = clamp(x, min_x, max_x)
+                y = clamp(y, min_y, max_y)
+            else:
+                # Fallback to def
+                x = clamp(x, 0, constants.DEFAULT_GRID_SIZE - 1)
+                y = clamp(y, 0, constants.DEFAULT_GRID_SIZE - 1)
 
             if (x, y) != (self.grid_x, self.grid_y):
                 # Convert grid coordinates to world position
                 self.grid_x = x
                 self.grid_y = y
-                self.target_position = grid_to_world(x, y)
+                self.target_position = constants.grid_to_world(x, y)
                 self.is_moving = True
 
     def can_move_to(self, x, y):
-        return (0 <= x < GRID_SIZE and
-                0 <= y < GRID_SIZE and
-                not self.game.obstacle_spawner.is_position_blocked(x, y))
+        if not self.game.is_position_in_dungeon(x, y):
+            return False
+        
+        if self.game.is_position_blocked(x, y):
+            return False
+        
+        return True
 
     def try_attack(self):
         for entity in self.attack_shape.intersects().entities:

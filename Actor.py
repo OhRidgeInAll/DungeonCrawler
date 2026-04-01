@@ -27,6 +27,19 @@ class Actor(Entity):
         if self.health <= 0:
             self.die()
     
+    def can_attack(self, target):
+        """Check if this actor can attack the target."""
+        # Check cooldown
+        if self.attack_cooldown > 0:
+            return False
+        
+        # Check team (don't attack allies)
+        if hasattr(target, 'team') and target.team == self.team:
+            return False
+        
+        distance = self.distance(target)
+        return distance <= ATTACK_RANGE
+    
     def attack(self, target):
         if self.can_attack(target):
             target.take_damage(self.attack_power)
@@ -34,6 +47,19 @@ class Actor(Entity):
             self.show_attack_effect(target)
             return True
         return False
+    
+    def show_attack_effect(self, target):
+        """Visual effect for attacking."""
+        # Create a line or effect between attacker and target
+        attack_line = Entity(
+            model='cube',
+            scale=(0.1, 0.1, self.distance(target)),
+            color=color.yellow,
+            position=self.position,
+            look_at=target.position
+        )
+        attack_line.animate('alpha', 0, duration=0.2)
+        destroy(attack_line, delay=0.2)
     
     def render_attack(self):
         attack_indicator = Entity(

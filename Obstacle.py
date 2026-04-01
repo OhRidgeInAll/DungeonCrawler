@@ -33,8 +33,8 @@ class ObstacleSpawner:
     def is_valid_position(self, x, y):
         return (0 <= x < self.grid_size and
                 0 <= y < self.grid_size and
-                not any(obstacle.grid_x == x and obstacle.grid_y == y for obstacle in self.obstacles) and
-                (x, y) != (GRID_SIZE // 2, GRID_SIZE // 2)) # Prevent placing on player start position
+                not any(obstacle.grid_x == x and obstacle.grid_y == y for obstacle in self.obstacles))
+                # Player start position check removed - handled by room generation
     
     def generate_obstacles(self, count):
         for _ in range(count):
