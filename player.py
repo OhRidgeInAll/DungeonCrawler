@@ -25,7 +25,7 @@ class Player(Actor):
 
         self.attack_shape = Entity(
             parent=self,
-            movel=Circle(6, radius=0.4),
+            model=Circle(6, radius=1.5),
             color=color.clear,
             collider='mesh',
             visible=False

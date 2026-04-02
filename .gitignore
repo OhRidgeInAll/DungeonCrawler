@@ -33,3 +33,6 @@ test_movement.py
 test_simple.py
 debug_roomgen.py
 test_integration.py
+player.py
+test_pathfinding.py
+test_final.py
