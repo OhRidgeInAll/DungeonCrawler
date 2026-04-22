@@ -174,8 +174,9 @@ class MouseController:
         next_pos = self.current_path[self.path_index]
         self.path_index += 1
         
-        # Queue move action
+        # Queue move action and process turn
         self.game_board.queue_player_action('move', next_pos[0], next_pos[1])
+        self.game_board.process_turn()
         
         # Check if we should continue (no enemies in vision at next position)
         # The pathfinder already checked this, but we double-check
@@ -190,10 +191,13 @@ class MouseController:
             # Enemy detected or path complete
             self.following_path = False
         else:
-            # Continue following path on next turn
-            invoke(self.follow_next_step, delay=0.1)  # Wait for turn to process
+            # Continue following path after current turn completes
+            # We'll check in update() if turn is complete
+            pass
     
     def update(self):
         """Update mouse controller state."""
-        # Currently nothing to update every frame
-        pass
+        # Continue following path if turn is complete and we're still following
+        if self.following_path and not self.game_board.turn_in_progress:
+            # Small delay to ensure animations complete
+            invoke(self.follow_next_step, delay=0.2)

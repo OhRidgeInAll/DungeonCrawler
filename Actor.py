@@ -1,5 +1,6 @@
 from ursina import *
 from constants import *
+import math
 
 class Actor(Entity):
     def __init__(self, **kwargs):
@@ -49,8 +50,14 @@ class Actor(Entity):
         return False
     
     def show_attack_effect(self, target):
-        """Visual effect for attacking."""
-        # Create a line or effect between attacker and target
+        """Visual effect for attacking with particle effects."""
+        # Create particle effect at target position
+        self.create_attack_particles(target.position)
+        
+        # Also show floating damage number
+        self.show_damage_number(target, self.attack_power)
+        
+        # Keep the original line effect for visual connection
         attack_line = Entity(
             model='cube',
             scale=(0.1, 0.1, self.distance(target)),
@@ -60,6 +67,48 @@ class Actor(Entity):
         )
         attack_line.animate('alpha', 0, duration=0.2)
         destroy(attack_line, delay=0.2)
+    
+    def create_attack_particles(self, position):
+        """Create particle effect at given position."""
+        num_particles = 8
+        for i in range(num_particles):
+            angle = (i / num_particles) * 360
+            rad = math.radians(angle)
+            direction = Vec3(math.cos(rad), math.sin(rad), 0)
+            
+            particle = Entity(
+                model='circle',
+                color=color.yellow,
+                scale=0.1,
+                position=position,
+                alpha=0.8
+            )
+            
+            # Animate particle outward
+            target_pos = position + direction * 0.5
+            particle.animate_position(target_pos, duration=0.3, curve=curve.linear)
+            particle.animate('alpha', 0, duration=0.3)
+            destroy(particle, delay=0.3)
+    
+    def show_damage_number(self, target, damage):
+        """Show floating damage number above target."""
+        damage_text = Text(
+            text=f"-{damage}",
+            position=target.position + (0, 0.5, 0),
+            scale=2,
+            color=color.red,
+            background=True,
+            background_color=color.black
+        )
+        
+        # Animate floating up and fading out
+        damage_text.animate_position(
+            damage_text.position + (0, 1, 0),
+            duration=1.0,
+            curve=curve.out_expo
+        )
+        damage_text.animate('alpha', 0, duration=1.0)
+        destroy(damage_text, delay=1.0)
     
     def render_attack(self):
         attack_indicator = Entity(

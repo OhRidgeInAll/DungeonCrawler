@@ -55,6 +55,10 @@ def update():
     # Update UI with vision info
     ui.update(game.player)
     
+    # Smooth camera following
+    camera_target = Vec3(game.player.position.x, game.player.position.y, -20)
+    camera.position = lerp(camera.position, camera_target, time.dt * 5)
+    
     # Visualize vision radius (optional debugging)
     # visualize_vision_radius()
 

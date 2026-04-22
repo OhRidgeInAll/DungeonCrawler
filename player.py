@@ -1,7 +1,7 @@
 from ursina import *
+from ursina.prefabs.sprite_sheet_animation import SpriteSheetAnimation
 import constants
 from Actor import *
-from SpriteSheet import *
 
 class Player(Actor):
     def __init__(self, parent):
@@ -9,13 +9,27 @@ class Player(Actor):
         # We're overriding the Entity class to create a Player class
         super().__init__(
             game = parent,
-            model='quad',
-            texture = 'assets/Robot.png',
+            model=None,  # We'll use sprite sheet instead
             # Position set by gameboard
             position=(0, 0, -0.1),  # Temporary position
             z=-0.1,  # Slightly above the grid
             team=0
             )
+        
+        # Fixed implementation I thought texture loading was correct
+        # SpriteAnimation setup for player character
+        self.sprite = SpriteSheetAnimation(
+            'assets/Robot.png',
+            tileset_size=(2, 1),  # 2 frames horizontally, 1 row
+            fps=6,
+            animations={
+                'idle': ((0, 0), (1, 0)),  # Frame 0 to frame 1
+            },
+            parent=self,
+            position=(0, 0, 0),
+            scale=(constants.TILE_SIZE * 0.8, constants.TILE_SIZE * 0.8)
+        )
+        self.sprite.play_animation('idle')
         self.health = 100
         self.grid_x = 0  # temp, will be set by gameboard (both x,y)
         self.grid_y = 0
@@ -23,13 +37,8 @@ class Player(Actor):
         self.move_speed = 50
         self.is_moving = False
 
-        self.attack_shape = Entity(
-            parent=self,
-            model=Circle(6, radius=1.5),
-            color=color.clear,
-            collider='mesh',
-            visible=False
-        )
+        # Attack range checking will use distance instead of collider
+        self.attack_range = constants.ATTACK_RANGE
     
     @property
     def grid_position(self):
@@ -64,9 +73,14 @@ class Player(Actor):
         return True
 
     def try_attack(self):
-        for entity in self.attack_shape.intersects().entities:
-            if hasattr(entity, 'team') and entity.team != self.team:
-                self.attack(entity)
+        if not hasattr(self, 'game') or not self.game.enemies:
+            return
+            
+        for enemy in self.game.enemies:
+            # Calculate Manhattan distance (grid units)
+            distance = abs(self.grid_x - enemy.grid_x) + abs(self.grid_y - enemy.grid_y)
+            if distance <= 1:  # ATTACK_RANGE = 1.5 grid units (adjacent tiles)
+                self.attack(enemy)
                 break
 
     def update(self):
