@@ -39,6 +39,7 @@ class Player(Actor):
 
         # Attack range checking will use distance instead of collider
         self.attack_range = constants.ATTACK_RANGE
+        self.has_attacked_this_turn = False
     
     @property
     def grid_position(self):
@@ -72,16 +73,39 @@ class Player(Actor):
         
         return True
 
+    def can_attack(self, target):
+        # There was an attempt to implement cooldowns, shortsighted as they were timebased initially
+        """Override Actor.can_attack to include turn-based check."""
+        # Check if already attacked this turn
+        if hasattr(self, 'has_attacked_this_turn') and self.has_attacked_this_turn:
+            return False
+        
+        # Use parent's can_attack for other checks (distance, team, etc.)
+        return super().can_attack(target)
+    
+    def attack(self, target):
+        """Override Actor.attack to set turn-based flag instead of cooldown."""
+        if self.can_attack(target):
+            target.take_damage(self.attack_power)
+            self.has_attacked_this_turn = True
+            self.show_attack_effect(target)
+            return True
+        return False
+    
     def try_attack(self):
         if not hasattr(self, 'game') or not self.game.enemies:
-            return
+            return False
             
+        attacked = False
         for enemy in self.game.enemies:
             # Calculate Manhattan distance (grid units)
             distance = abs(self.grid_x - enemy.grid_x) + abs(self.grid_y - enemy.grid_y)
-            if distance <= 1:  # ATTACK_RANGE = 1.5 grid units (adjacent tiles)
-                self.attack(enemy)
-                break
+            if distance <= self.attack_range:  # Use actual attack range
+                if self.attack(enemy):
+                    attacked = True
+                    break
+        
+        return attacked
 
     def update(self):
         if self.is_moving:

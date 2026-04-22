@@ -3,42 +3,82 @@ from constants import *
 
 class CombatUI:
     def __init__(self):
-        self.health_bar = Entity(
-            parent = camera.ui,
-            model = 'quad',
-            scale = (0.3, 0.05),
-            color = color.red,
-            position=(-0.7, 0.4))
-
+        # Clean HUD layout
+        # Health bar at top-left
         self.health_background = Entity(
-            parent=self.health_bar,
+            parent=camera.ui,
             model='quad',
-            scale=(1.02, 1.1),
+            scale=(0.35, 0.06),
             color=color.black,
-            z=0.1)
-
+            position=(-0.7, 0.45),  # Left side
+            z=-1
+        )
+        
+        self.health_bar = Entity(
+            parent=self.health_background,
+            model='quad',
+            scale=(0.98, 0.8),
+            color=color.red,
+            position=(0, 0, 0),
+            z=0
+        )
+        
         self.health_text = Text(
-            text = "100/100",
-            parent = camera.ui,
-            position = (0.55, 0.4),
-            scale=1.5)
-
-        self.cooldown_indicator = Entity(
-            parent = camera.ui,
-            model = 'circle',
-            scale = 0.03,
-            color = color.yellow,
-            position = (0.6, 0.4))
+            text="100/100",
+            parent=camera.ui,
+            position=(-0.7, 0.45),
+            scale=1.8,
+            color=color.white,
+            origin=(0, 0)
+        )
+        
+        # Attack status indicator
+        self.attack_status = Text(
+            text="READY",
+            parent=camera.ui,
+            position=(-0.7, 0.38),
+            scale=1.5,
+            color=color.green,
+            origin=(0, 0)
+        )
+        
+        # Turn counter (top-right)
+        self.turn_text = Text(
+            text="Turn: 0",
+            parent=camera.ui,
+            position=(0.75, 0.45),
+            scale=1.8,
+            color=color.white,
+            origin=(0, 0)
+        )
+        
+        # Attack range indicator (top-right)
+        self.range_indicator = Text(
+            text="Range: 1.5",
+            parent=camera.ui,
+            position=(0.75, 0.38),
+            scale=1.5,
+            color=color.yellow,
+            origin=(0, 0)
+        )
     
     def update(self, player):
         # Update health bar
-        health_pct = player.health / 100.0
-        self.health_bar.scale_x = 0.3 * health_pct
-        self.health_text.text = f"{player.health}/100"
-
-        if player.attack_cooldown > 0:
-            self.cooldown_indicator.color = color.gray
-            self.cooldown_indicator.scale = 0.03 * (player.attack_cooldown / ATTACK_COOLDOWN)
+        health_pct = max(0, player.health / 100.0)
+        self.health_bar.scale_x = 0.98 * health_pct
+        self.health_text.text = f"{int(player.health)}/100"
+        
+        # Update attack status (turn-based)
+        if hasattr(player, 'has_attacked_this_turn') and player.has_attacked_this_turn:
+            self.attack_status.text = "ATTACKED"
+            self.attack_status.color = color.red
         else:
-            self.cooldown_indicator.color = color.yellow
-            self.cooldown_indicator.scale = 0.03
+            self.attack_status.text = "READY"
+            self.attack_status.color = color.green
+        
+        # Update turn counter (if available)
+        if hasattr(player, 'game') and hasattr(player.game, 'current_turn'):
+            self.turn_text.text = f"Turn: {player.game.current_turn}"
+        
+        # Update range indicator
+        self.range_indicator.text = f"Range: {getattr(player, 'attack_range', 1.5)}"

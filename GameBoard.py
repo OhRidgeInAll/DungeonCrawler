@@ -81,12 +81,7 @@ class GameBoard:
                         print(f"Player placed at fallback grid position: ({tx}, {ty})")
                         break
 
-        self.turn_text = Text(
-            text=f"Turn: {self.current_turn}",
-            position=(-0.8, 0.45),
-            scale=2,
-            color=color.white
-        )
+        # Turn counter moved to GameUI.py
     
     def _spawn_enemies(self):
         """Spawn enemies in non-starting rooms."""
@@ -137,7 +132,10 @@ class GameBoard:
         self.turn_in_progress = True
         
         self.current_turn += 1
-        self.turn_text.text = f"Turn: {self.current_turn}"
+        
+        # Reset player's attack flag at start of turn
+        if hasattr(self.player, 'has_attacked_this_turn'):
+            self.player.has_attacked_this_turn = False
         
         # Process queued player action first
         if self.action_queue:

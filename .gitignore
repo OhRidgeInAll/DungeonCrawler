@@ -36,3 +36,4 @@ test_integration.py
 player.py
 test_pathfinding.py
 test_final.py
+*.py
