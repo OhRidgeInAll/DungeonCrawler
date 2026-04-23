@@ -1,0 +1,86 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            binary: DungeonCrawler.exe
+            release_name: DungeonCrawler-windows.exe
+          - os: ubuntu-latest
+            binary: DungeonCrawler
+            release_name: DungeonCrawler-linux
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pyinstaller pytest
+
+      - name: Run tests
+        shell: bash
+        run: |
+          if find . -name "test_*.py" -o -name "*_test.py" | grep -qv '.venv'; then
+            python -m pytest --tb=short -q
+          else
+            echo "No tests found, skipping."
+          fi
+
+      - name: Build binary
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then SEP=";"; else SEP=":"; fi
+          pyinstaller \
+            --onefile \
+            --windowed \
+            --name DungeonCrawler \
+            --add-data "assets${SEP}assets" \
+            --collect-all ursina \
+            --collect-all panda3d \
+            main.py
+
+      - name: Rename binary for release
+        shell: bash
+        run: mv dist/${{ matrix.binary }} dist/${{ matrix.release_name }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.release_name }}
+          path: dist/${{ matrix.release_name }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: "Build #${{ github.run_number }}"
+          make_latest: true
+          body: |
+            Automated build from commit ${{ github.sha }}.
+
+            **Download the binary for your platform below.**
+          files: artifacts/*

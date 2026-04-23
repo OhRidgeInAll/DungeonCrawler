@@ -1,4 +1,14 @@
+import sys
+from pathlib import Path
+
 from ursina import *
+from ursina import application
+
+if getattr(sys, 'frozen', False):
+    _base = Path(sys._MEIPASS)
+    application.asset_folder = _base
+    application.textures_compressed_folder = _base / 'textures_compressed'
+    application.models_compressed_folder = _base / 'models_compressed'
 from GameBoard import *
 from constants import *
 from GameUI import CombatUI
