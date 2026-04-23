@@ -108,26 +108,30 @@ class Actor(Entity):
             particle.animate('alpha', 0, duration=0.3)
             destroy(particle, delay=0.3)
     
-    def show_damage_number(self, target, damage):
+    def show_damage_number(self, target, damage, position=None):
         """Show floating damage number above target."""
-        # Ensure target has a valid position
-        if not hasattr(target, 'position'):
-            return
+        # Use provided position or target's position
+        if position is None and hasattr(target, 'position'):
+            position = target.position
+        elif position is None:
+            return  # Can't show damage number without position
             
-        # Position above target with higher Z to be visible
-        # Use target's current world position
+        # Create damage text as a 3D billboard entity in world space
+        # Position slightly above the target
         damage_text = Text(
             text=f"-{damage}",
-            position=Vec3(target.position.x, target.position.y + 0.3, -0.4),
-            scale=1.2,  # Smaller size
+            position=(position.x, position.y + 0.5, position.z),  # World coordinates, above target
+            scale=0.5,  # World-space scale
             color=color.red,
             background=True,
-            background_color=color.black
+            background_color=color.black,
+            billboard=True,  # Always face camera
+            eternal=False  # Will be destroyed
         )
         
-        # Animate floating up and fading out
+        # Animate floating up in world space
         damage_text.animate_position(
-            Vec3(damage_text.position.x, damage_text.position.y + 0.7, -0.4),
+            (damage_text.position.x, damage_text.position.y + 1.0, damage_text.position.z),
             duration=1.0,
             curve=curve.out_expo
         )

@@ -144,7 +144,14 @@ class GameBoard:
             
             if action_type == 'move':
                 x, y = args
-                self.player.move_to_grid_position(x, y)
+                # Check if there's an enemy at the target position
+                enemy_at_target = self.get_enemy_at_position(x, y)
+                if enemy_at_target:
+                    # Attack the enemy instead of moving
+                    self.player.try_attack_enemy_at(x, y)
+                else:
+                    # No enemy, proceed with movement
+                    self.player.move_to_grid_position(x, y)
             # Could add other action types (attack, etc.)
         
         # Wait for player movement to complete before enemies move
@@ -220,4 +227,11 @@ class GameBoard:
         for room in self.rooms:
             if room.is_position_in_room(x, y):
                 return room
+        return None
+    
+    def get_enemy_at_position(self, x, y):
+        """Get enemy at specified grid position, or None if no enemy there."""
+        for enemy in self.enemies:
+            if enemy.grid_x == x and enemy.grid_y == y:
+                return enemy
         return None

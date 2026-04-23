@@ -4,7 +4,7 @@ from constants import *
 from GameUI import CombatUI
 from Pathfinding import MouseController
 
-# Pause menu class
+# Pause menu class - WITH FIXES (reduced alpha, z-ordering)
 class PauseMenu:
     def __init__(self):
         self.visible = False
@@ -12,9 +12,9 @@ class PauseMenu:
             parent=camera.ui,
             model='quad',
             scale=(2, 2),
-            color=color.rgba(0, 0, 0, 180),
+            color=color.rgba(0, 0, 0, 100),  # Reduced alpha for better visibility
             position=(0, 0),
-            z=-2,
+            z=-1,
             enabled=False
         )
         
@@ -25,7 +25,8 @@ class PauseMenu:
             scale=3,
             color=color.white,
             origin=(0, 0),
-            enabled=False
+            enabled=False,
+            z=0  # Ensure above background
         )
         
         self.resume_button = Button(
@@ -35,7 +36,8 @@ class PauseMenu:
             scale=(0.3, 0.1),
             color=color.gray,
             on_click=self.resume_game,
-            enabled=False
+            enabled=False,
+            z=0
         )
         
         self.quit_button = Button(
@@ -45,7 +47,8 @@ class PauseMenu:
             scale=(0.3, 0.1),
             color=color.gray,
             on_click=self.quit_game,
-            enabled=False
+            enabled=False,
+            z=0
         )
     
     def show(self):
@@ -70,12 +73,15 @@ class PauseMenu:
 
 #This creates a window
 app = Ursina()
+print("Ursina app initialized")
 
 #Create our gameboard (A matrix of GameTiles)
 game = GameBoard()
 ui = CombatUI()
 mouse_controller = MouseController(game)
 pause_menu = PauseMenu()
+
+print("Game started!")
 
 def input(key):
     # Handle movement keys - queue actions instead of immediate movement

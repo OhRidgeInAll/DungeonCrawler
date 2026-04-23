@@ -71,6 +71,11 @@ class Player(Actor):
         if self.game.is_position_blocked(x, y):
             return False
         
+        # Check if there's an enemy at the target position
+        enemy_at_target = self.game.get_enemy_at_position(x, y)
+        if enemy_at_target:
+            return False  # Can't move into enemy tile
+        
         return True
 
     def can_attack(self, target):
@@ -86,9 +91,11 @@ class Player(Actor):
     def attack(self, target):
         """Override Actor.attack to set turn-based flag instead of cooldown."""
         if self.can_attack(target):
+            # Get target position before potentially destroying it
+            target_position = target.position if hasattr(target, 'position') else None
             target.take_damage(self.attack_power)
             self.has_attacked_this_turn = True
-            self.show_attack_effect(target)
+            self.show_attack_effect(target, target_position)
             return True
         return False
     
@@ -106,6 +113,20 @@ class Player(Actor):
                     break
         
         return attacked
+    
+    def try_attack_enemy_at(self, x, y):
+        """Try to attack enemy at specific grid position."""
+        if not hasattr(self, 'game') or not self.game.enemies:
+            return False
+            
+        # Find enemy at the specified position
+        for enemy in self.game.enemies:
+            if enemy.grid_x == x and enemy.grid_y == y:
+                # Check if enemy is in attack range
+                distance = abs(self.grid_x - x) + abs(self.grid_y - y)
+                if distance <= self.attack_range:
+                    return self.attack(enemy)
+        return False
 
     def update(self):
         if self.is_moving:

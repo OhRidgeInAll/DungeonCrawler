@@ -26,7 +26,8 @@ class Enemy(Actor):
         self.health = random.randint(60, 100)
         self.attack_power = random.randint(6, 10)
         
-        #self.on_death = Death Behaviour Goes Here
+        # Set up death callback to remove from game board
+        self.on_death = self._on_death
     
     def update(self):
         super().update()
@@ -120,3 +121,11 @@ class Enemy(Actor):
     @property
     def grid_position(self):
         return (self.grid_x, self.grid_y)
+    
+    def _on_death(self):
+        """Callback when enemy dies - remove from game board."""
+        if hasattr(self, 'game_board') and self.game_board:
+            # Remove from enemies list
+            if hasattr(self.game_board, 'enemies') and self in self.game_board.enemies:
+                self.game_board.enemies.remove(self)
+                print(f"Enemy removed from game board at ({self.grid_x}, {self.grid_y})")
