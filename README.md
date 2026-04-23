@@ -24,7 +24,7 @@ python -m venv .venv
 
 Install dependencies into it:
 ```shell
-pip install -r requrirements.txt
+pip install -r requirements.txt
 ```
 
 ### Each time you want to run the game
