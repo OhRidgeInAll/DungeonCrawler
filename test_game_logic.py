@@ -183,3 +183,69 @@ def test_mouse_controller_schedules_at_most_one_step_per_burst():
     for _ in range(50):
         mc.update()
     assert mc._step_scheduled  # exactly one pending step, not fifty
+
+
+def test_on_right_click_defers_instead_of_dropping_step_mid_turn():
+    """Regression test: on_right_click() used to call _advance() unconditionally, even
+    while a turn was already resolving (e.g. from a recent WASD press). process_turn()
+    silently no-ops in that case, but _advance() had already popped the step off the
+    path - so the click was swallowed: no move happened, yet the controller believed
+    the walk had finished."""
+    game = GameBoard()
+    player = game.player
+    mc = MouseController(game)
+    start_room = game._get_room_by_role("start")
+    sx, sy = start_room.get_center()
+    clear_tile(game, sx, sy + 1)
+    game.enemies.clear()
+
+    player.grid_x, player.grid_y = sx, sy
+    player.position = grid_to_world(sx, sy)
+    player.is_moving = False
+
+    game.turn_in_progress = True  # simulate a turn already resolving
+    mc.on_right_click(grid_to_world(sx, sy + 1))
+
+    assert player.grid_position == (sx, sy)  # not dropped: simply not taken yet
+    assert mc.path == [(sx, sy + 1)]
+    assert mc.active
+
+    # Once the turn clears, update()'s normal scheduling picks the deferred step up.
+    game.turn_in_progress = False
+    mc.update()
+    assert mc._step_scheduled
+    mc._scheduled_advance()
+    assert player.grid_position == (sx, sy + 1)
+
+
+def test_stop_cancels_a_pending_scheduled_step():
+    """Regression test: stop() used to clear `active`/`path` but leave any already-
+    scheduled invoke() callback alive. A WASD press mid-schedule followed by a fresh
+    right-click within the delay window let the stale callback fire _advance() again
+    against the new walk's state - an extra, unscheduled step."""
+    from ursina import application as ursina_application
+
+    game = GameBoard()
+    player = game.player
+    mc = MouseController(game)
+    start_room = game._get_room_by_role("start")
+    sx, sy = start_room.get_center()
+    clear_tile(game, sx, sy + 1)
+    game.enemies.clear()
+
+    player.grid_x, player.grid_y = sx, sy
+    player.position = grid_to_world(sx, sy)
+    player.is_moving = False
+
+    mc.active = True
+    mc.path = [(sx, sy + 1)]
+    mc.update()
+    assert mc._pending_step is not None
+    pending = mc._pending_step
+    assert pending in ursina_application.sequences
+
+    mc.stop()
+
+    assert not mc._step_scheduled
+    assert mc._pending_step is None
+    assert pending not in ursina_application.sequences  # actually deregistered, not just forgotten

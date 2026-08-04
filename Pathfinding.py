@@ -140,6 +140,7 @@ class MouseController:
         self.path: List[Tuple[int, int]] = []
         self.active = False
         self._step_scheduled = False
+        self._pending_step = None  # the Sequence returned by invoke(), so stop() can cancel it
 
     def on_right_click(self, world_pos):
         """Handle right-click to move player to clicked position."""
@@ -164,12 +165,20 @@ class MouseController:
         print(f"Path found with {len(path)} steps")
         self.path = path
         self.active = True
-        self._advance()
+        # Take the first step immediately for responsiveness, unless a turn is already
+        # resolving - process_turn() would just no-op and silently drop this step, so
+        # let update()'s turn_in_progress-guarded scheduling pick it up once it clears.
+        if not self.game_board.turn_in_progress:
+            self._advance()
 
     def stop(self):
-        """Cancel any in-progress auto-walk."""
+        """Cancel any in-progress auto-walk, including a step already scheduled via invoke()."""
         self.active = False
         self.path = []
+        self._step_scheduled = False
+        if self._pending_step is not None:
+            self._pending_step.kill()
+            self._pending_step = None
 
     def _advance(self):
         """Take exactly one step of the path, if it's still safe to do so."""
@@ -196,8 +205,9 @@ class MouseController:
             return
 
         self._step_scheduled = True
-        invoke(self._scheduled_advance, delay=self.STEP_DELAY)
+        self._pending_step = invoke(self._scheduled_advance, delay=self.STEP_DELAY)
 
     def _scheduled_advance(self):
         self._step_scheduled = False
+        self._pending_step = None
         self._advance()
