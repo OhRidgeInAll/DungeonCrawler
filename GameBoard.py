@@ -4,7 +4,7 @@ from GameTile import GameTile
 from constants import *
 from Obstacle import *
 from Room import RoomGenerator
-from Enemy import Enemy
+from Enemy import spawn_random_enemy
 from Staircase import Staircase
 
 class GameBoard:
@@ -187,10 +187,10 @@ class GameBoard:
                         break
                 
                 if not position_occupied:
-                    enemy = Enemy(tx, ty, self)
+                    enemy = spawn_random_enemy(tx, ty, self)
                     self.enemies.append(enemy)
                     placed += 1
-                    print(f"Enemy spawned at ({tx}, {ty}) in room {room}")
+                    print(f"{enemy.archetype_id} spawned at ({tx}, {ty}) in room {room}")
                 
                 attempts += 1
     
