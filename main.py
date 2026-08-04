@@ -85,6 +85,8 @@ class PauseMenu:
 app = Ursina()
 print("Ursina app initialized")
 
+DEBUG_MODE = True  # dev-only conveniences (e.g. full heal); flip off before shipping a build
+
 #Create our gameboard (A matrix of GameTiles)
 game = GameBoard()
 ui = CombatUI()
@@ -121,7 +123,18 @@ def input(key):
             pause_menu.hide()
         else:
             pause_menu.show()
-    
+
+    # Number keys equip the corresponding inventory item
+    elif key in ('1', '2', '3', '4', '5', '6', '7', '8', '9'):
+        idx = int(key) - 1
+        if idx < len(game.player.inventory):
+            game.player.equip(game.player.inventory[idx])
+
+    # DEBUG: full heal
+    elif key == 'h' and DEBUG_MODE:
+        game.player.health = game.player.max_health
+        print(f"[DEBUG] Healed to {game.player.health}/{game.player.max_health}")
+
     # Right mouse button for pathfinding movement - COMMENTED OUT due to bugs
     # elif key == 'right mouse down':
     #     # Get world position from mouse

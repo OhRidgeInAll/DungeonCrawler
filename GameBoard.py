@@ -4,8 +4,10 @@ from GameTile import GameTile
 from constants import *
 from Obstacle import *
 from Room import RoomGenerator
-from Enemy import Enemy
+from Enemy import spawn_random_enemy
 from Staircase import Staircase
+from Pickup import Pickup
+from Part import roll_loot
 
 class GameBoard:
     def __init__(self):
@@ -15,6 +17,7 @@ class GameBoard:
         self.rooms = []
         self.corridors = []
         self.enemies = []  # Will contain Enemy instances
+        self.pickups = []  # Robot drops
         self.staircase = None
         self.current_turn = 0
         self.turn_in_progress = False
@@ -72,6 +75,10 @@ class GameBoard:
         for enemy in list(self.enemies):
             destroy(enemy)
         self.enemies = []
+
+        for pickup in self.pickups:
+            destroy(pickup)
+        self.pickups = []
 
         if self.staircase:
             destroy(self.staircase)
@@ -152,6 +159,14 @@ class GameBoard:
                 self.staircase = Staircase(tx, ty)
                 return
 
+    def spawn_loot_drop(self, archetype_id, grid_x, grid_y):
+        """Roll a chance to drop an enemy part where an enemy died."""
+        part = roll_loot(archetype_id)
+        if part is None:
+            return
+        self.pickups.append(Pickup(grid_x, grid_y, part))
+        print(f"{part.name} dropped at ({grid_x}, {grid_y})")
+
     def _spawn_enemies(self):
         """Spawn enemies in normal rooms (skips the start room and the exit room)."""
         spawn_rooms = [room for room in self.rooms if room.role == "normal"]
@@ -187,10 +202,10 @@ class GameBoard:
                         break
                 
                 if not position_occupied:
-                    enemy = Enemy(tx, ty, self)
+                    enemy = spawn_random_enemy(tx, ty, self)
                     self.enemies.append(enemy)
                     placed += 1
-                    print(f"Enemy spawned at ({tx}, {ty}) in room {room}")
+                    print(f"{enemy.archetype_id} spawned at ({tx}, {ty}) in room {room}")
                 
                 attempts += 1
     
@@ -236,8 +251,9 @@ class GameBoard:
         self.turn_in_progress = False
     
     def queue_player_action(self, action_type, *args):
-        """Queue a player action for the next turn."""
-        self.action_queue.append((action_type, *args))
+        """Queue the next player action, replacing any not-yet-processed one so a
+        key pressed while a turn is still resolving can't go stale and fire later."""
+        self.action_queue = [(action_type, *args)]
     
     def update(self):
         """Update game state - called every frame."""
@@ -251,6 +267,15 @@ class GameBoard:
         #Turn complete if all done (wait for anims/actions to finish)
         if self.turn_in_progress and all_done:
             self.turn_in_progress = False
+
+        # Pick up any parts the player has walked onto
+        if all_done:
+            for pickup in list(self.pickups):
+                if pickup.grid_x == self.player.grid_x and pickup.grid_y == self.player.grid_y:
+                    self.player.inventory.append(pickup.part)
+                    print(f"Picked up {pickup.part.name}")
+                    self.pickups.remove(pickup)
+                    destroy(pickup)
 
         # Check for floor transition once the player has settled on a tile
         if (self.staircase and all_done and

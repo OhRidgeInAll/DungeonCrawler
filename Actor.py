@@ -10,6 +10,7 @@ class Actor(Entity):
         self.health = 100
         self.attack_power = 10
         self.attack_cooldown = 0
+        self.attack_range = ATTACK_RANGE
         self.hit_effect = Entity(parent=self, model='circle', scale = 1.2, color = color.red, alpha=0, z=-0.2)
     
     def update(self):
@@ -57,11 +58,11 @@ class Actor(Entity):
         if hasattr(self, 'grid_x') and hasattr(target, 'grid_x'):
             # Calculate Manhattan distance (grid units)
             distance = abs(self.grid_x - target.grid_x) + abs(self.grid_y - target.grid_y)
-            return distance <= ATTACK_RANGE
+            return distance <= self.attack_range
         else:
             # Fallback to 3D distance (manual calculation)
             distance = (self.position - target.position).length()
-            return distance <= ATTACK_RANGE
+            return distance <= self.attack_range
     
     def attack(self, target):
         if self.can_attack(target):

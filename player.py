@@ -3,6 +3,10 @@ from ursina.prefabs.sprite_sheet_animation import SpriteSheetAnimation
 import constants
 from Actor import *
 
+ATTACK_ANIMATION_FPS = 8
+ATTACK_ANIMATION_FRAMES = 3
+ATTACK_ANIMATION_DURATION = ATTACK_ANIMATION_FRAMES / ATTACK_ANIMATION_FPS
+
 class Player(Actor):
     def __init__(self, parent):
         # Position will be set by GameBoard after dungeon generation
@@ -16,20 +20,23 @@ class Player(Actor):
             team=0
             )
         
-        # Fixed implementation I thought texture loading was correct
-        # SpriteAnimation setup for player character
+        # SpriteAnimation setup for player character - idle/walk/attack rows
         self.sprite = SpriteSheetAnimation(
             'assets/Robot.png',
-            tileset_size=(2, 1),  # 2 frames horizontally, 1 row
-            fps=6,
+            tileset_size=(4, 3),
+            fps=ATTACK_ANIMATION_FPS,
             animations={
-                'idle': ((0, 0), (1, 0)),  # Frame 0 to frame 1
+                'idle': ((0, 0), (1, 0)),
+                'walk': ((0, 1), (3, 1)),
+                'attack': ((0, 2), (2, 2)),
             },
             parent=self,
             position=(0, 0, 0),
             scale=(constants.TILE_SIZE * 0.8, constants.TILE_SIZE * 0.8)
         )
+        self.sprite_state = 'idle'
         self.sprite.play_animation('idle')
+        self.is_attack_animation_playing = False
         self.health = 100
         self.grid_x = 0  # temp, will be set by gameboard (both x,y)
         self.grid_y = 0
@@ -37,13 +44,68 @@ class Player(Actor):
         self.move_speed = 50
         self.is_moving = False
 
-        # Attack range checking will use distance instead of collider
+        # Attack range checking will use distance instead of collider - Impl for ranged weaponry
         self.attack_range = constants.ATTACK_RANGE
         self.has_attacked_this_turn = False
-    
+
+        # Equipment / salvage system - Raw player stats TODO: Attach to stock parts
+        self.base_attack_power = self.attack_power
+        self.base_attack_range = self.attack_range
+        self.base_move_speed = self.move_speed
+        self.base_max_health = self.health
+
+        self.equipment = {"arm": None, "legs": None, "core": None}
+        self.inventory = []
+        self._recompute_stats()
+
     @property
     def grid_position(self):
         return (self.grid_x, self.grid_y)
+
+    def equip(self, part):
+        """Swap/Equip a salvaged part from the inventory, returning any part it replaces to the inventory."""
+        if part not in self.inventory:
+            return False
+
+        previous = self.equipment.get(part.slot)
+        self.inventory.remove(part)
+        if previous is not None:
+            self.inventory.append(previous)
+        self.equipment[part.slot] = part
+        self._recompute_stats()
+        return True
+
+    def unequip(self, slot):
+        """Move the part equipped in the given slot back to the inventory."""
+        part = self.equipment.get(slot)
+        if part is None:
+            return False
+
+        self.equipment[slot] = None
+        self.inventory.append(part)
+        self._recompute_stats()
+        return True
+
+    def _recompute_stats(self):
+        """Recalculate effective stats from base stats plus all equipped part modifiers."""
+        attack_power = self.base_attack_power
+        attack_range = self.base_attack_range
+        move_speed = self.base_move_speed
+        max_health = self.base_max_health
+
+        for part in self.equipment.values():
+            if part is None:
+                continue
+            attack_power += part.modifiers.get('attack_power', 0)
+            attack_range += part.modifiers.get('attack_range', 0)
+            move_speed += part.modifiers.get('move_speed', 0)
+            max_health += part.modifiers.get('max_health', 0)
+
+        self.attack_power = attack_power
+        self.attack_range = attack_range
+        self.move_speed = move_speed
+        self.max_health = max_health
+        self.health = min(self.health, self.max_health)
 
     def move_to_grid_position(self, x, y):
         if not self.is_moving and self.can_move_to(x, y):
@@ -96,6 +158,7 @@ class Player(Actor):
             target.take_damage(self.attack_power)
             self.has_attacked_this_turn = True
             self.show_attack_effect(target, target_position)
+            self._play_attack_animation()
             return True
         return False
     
@@ -135,4 +198,21 @@ class Player(Actor):
             if (self.position - self.target_position).length() < 0.01:
                 self.position = self.target_position
                 self.is_moving = False
+
+        if not self.is_attack_animation_playing:
+            self._set_sprite_state('walk' if self.is_moving else 'idle')
+
+    def _set_sprite_state(self, state):
+        if self.sprite_state != state:
+            self.sprite_state = state
+            self.sprite.play_animation(state)
+
+    def _play_attack_animation(self):
+        self.is_attack_animation_playing = True
+        self._set_sprite_state('attack')
+        invoke(self._end_attack_animation, delay=ATTACK_ANIMATION_DURATION)
+
+    def _end_attack_animation(self):
+        self.is_attack_animation_playing = False
+        self._set_sprite_state('walk' if self.is_moving else 'idle')
     
