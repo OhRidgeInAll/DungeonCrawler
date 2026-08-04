@@ -46,12 +46,10 @@ class Enemy(Actor):
         # Check if player visible (Manhattan dist)
         distance = abs(self.grid_x - player.grid_x) + abs(self.grid_y - player.grid_y)
         if distance <= self.vision_range:
-            self.move_toward_player(player.grid_x, player.grid_y)
-            
-            # Check attack valid
-            if self.can_attack_player(player.grid_x, player.grid_y):
-                # For now, mark opportunity
-                print(f"Enemy at ({self.grid_x},{self.grid_y}) could attack player")
+            if self.can_attack(player):
+                self.attack(player)
+            else:
+                self.move_toward_player(player.grid_x, player.grid_y)
         else:
             # Player not in range, maybe random movement or wait
             pass
@@ -112,11 +110,6 @@ class Enemy(Actor):
             return False
         
         return True
-    
-    def can_attack_player(self, player_x, player_y):
-        """Check if enemy can attack player from current position."""
-        distance = abs(self.grid_x - player_x) + abs(self.grid_y - player_y)
-        return distance <= 1  # Adjacent tiles for melee attack
     
     @property
     def grid_position(self):
