@@ -17,9 +17,24 @@ class Actor(Entity):
             self.attack_cooldown -= time.dt
     
     def die(self):
+        self._stop_sprite_animations()
         destroy(self)
         if hasattr(self, 'on_death'):
             self.on_death()
+
+    def _stop_sprite_animations(self):
+        """Ursina's destroy() assumes entity.animations is a list of objects with
+        .kill(), but SpriteSheetAnimation stores it as a dict of name -> Sequence,
+        which crashes destroy() when it iterates the dict's string keys instead.
+        Stop and clear it ourselves first so destroy() has nothing left to trip on.
+        
+        Maybe a tidier way in the future but this works for now. This is a workaround for the issue with SpriteSheetAnimation in Ursina."""
+        sprite = getattr(self, 'sprite', None)
+        if sprite is not None and hasattr(sprite, 'animations'):
+            for seq in sprite.animations.values():
+                if hasattr(seq, 'kill'):
+                    seq.kill()
+            sprite.animations = {}
     
     def take_damage(self, amount):
         self.health -= amount
@@ -31,7 +46,6 @@ class Actor(Entity):
     
     def can_attack(self, target):
         """Check if this actor can attack the target."""
-        # Check cooldown
         if self.attack_cooldown > 0:
             return False
         

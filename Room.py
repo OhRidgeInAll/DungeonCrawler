@@ -15,7 +15,12 @@ class Room:
         self.width = width
         self.height = height
         self.room_type = room_type
-        
+
+        # Role in the dungeon layout: "start", "normal", or "exit"
+        self.role: str = "normal"
+        # Generic metadata for future use (e.g. "boss", "treasure")
+        self.tags: Set[str] = set()
+
         # Connection points
         self.doors: List[Tuple[int, int]] = []
         
@@ -169,20 +174,36 @@ class RoomGenerator:
         
         #starting room
         start_room = self._create_starting_room()
+        start_room.role = "start"
         self.rooms.append(start_room)
         self.all_tiles.update(start_room.get_tiles())
-        
+
         for _ in range(num_rooms - 1):
             room = self._try_add_room()
             if room:
                 self.rooms.append(room)
                 self.all_tiles.update(room.get_tiles())
-        
+
         self._connect_rooms()
-        
+
         self._add_doors()
-        
+
+        self._tag_exit_room(start_room)
+
         return self.rooms, self.corridors
+
+    def _tag_exit_room(self, start_room: Room):
+        """Tag the room farthest (Manhattan distance) from the start room as the exit."""
+        # I may change this to some kind of snake path as if rooms are predictably the farthest it may disincentivize exploration
+        if len(self.rooms) < 2:
+            return
+
+        start_x, start_y = start_room.get_center()
+        farthest_room = max(
+            (room for room in self.rooms if room is not start_room),
+            key=lambda room: abs(room.get_center()[0] - start_x) + abs(room.get_center()[1] - start_y)
+        )
+        farthest_room.role = "exit"
     
     def _create_starting_room(self) -> Room:
         start_x = self.max_grid_size // 2 - 2

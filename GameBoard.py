@@ -5,91 +5,161 @@ from constants import *
 from Obstacle import *
 from Room import RoomGenerator
 from Enemy import Enemy
+from Staircase import Staircase
 
 class GameBoard:
     def __init__(self):
+        self.floor_number = 1
         self.tiles = []
         self.obstacles = []
         self.rooms = []
         self.corridors = []
         self.enemies = []  # Will contain Enemy instances
-        
+        self.staircase = None
+        self.current_turn = 0
+        self.turn_in_progress = False
+        self.action_queue = []
+
+        self.player = None
+        self._generate_floor()
+
+    def _generate_floor(self):
+        """Generate the dungeon layout, obstacles, enemies, and staircase for the current floor."""
         # Rooms
         self.room_generator = RoomGenerator(max_grid_size=20)
         self.rooms, self.corridors = self.room_generator.generate(num_rooms=5)
-        
+
         # bounds
         min_x, min_y, max_x, max_y = self.room_generator.get_bounds()
         set_dungeon_bounds(min_x, min_y, max_x, max_y)
-        
+
         # obstacles
         dungeon_width = max_x - min_x + 1
         dungeon_height = max_y - min_y + 1
         self.obstacle_spawner = ObstacleSpawner(max(dungeon_width, dungeon_height))
-        
-        
+
         self._generate_room_obstacles()
-        
-        # enemies spawn in non starting rooms
+
+        # enemies spawn in normal rooms only (not the start or exit room)
         self._spawn_enemies()
-        
-        # player
-        self.player = Player(self)
-        self.current_turn = 0
-        self.turn_in_progress = False
-        self.action_queue = []
-        
+
+        # player persists across floors; only created once
+        if self.player is None:
+            self.player = Player(self)
+
         # tiles (rooms + corridors) (Not obstacles)
         self.create_dungeon_tiles()
-        
-        # set start
-        if self.rooms:
-            start_room = self.rooms[0]
-            start_x, start_y = start_room.get_center()
-            # Ensure player pos valid
-            # Try center first, if blocked try nearby positions
-            positions_to_try = [
-                (start_x, start_y),
-                (start_x + 1, start_y),
-                (start_x - 1, start_y),
-                (start_x, start_y + 1),
-                (start_x, start_y - 1)
-            ]
-            
-            placed = False
-            for px, py in positions_to_try:
-                if (px, py) in start_room.get_tiles() and not self.is_position_blocked(px, py):
-                    # Set player position directly
-                    self.player.grid_x = px
-                    self.player.grid_y = py
-                    self.player.position = grid_to_world(px, py)
+
+        self._place_staircase()
+        self._place_player_in_start_room()
+
+    def advance_floor(self):
+        """Tear down the current floor and generate the next one, keeping the player and their progress."""
+        self.floor_number += 1
+        self._clear_floor_entities()
+        self._generate_floor()
+        print(f"Advanced to floor {self.floor_number}")
+
+    def _clear_floor_entities(self):
+        """Destroy all entities belonging to the current floor before regenerating."""
+        for tile in self.tiles:
+            destroy(tile)
+        self.tiles = []
+
+        for obstacle in self.obstacle_spawner.obstacles:
+            destroy(obstacle)
+
+        for enemy in list(self.enemies):
+            destroy(enemy)
+        self.enemies = []
+
+        if self.staircase:
+            destroy(self.staircase)
+            self.staircase = None
+
+        self.action_queue = []
+        self.turn_in_progress = False
+
+    def _get_room_by_role(self, role):
+        for room in self.rooms:
+            if room.role == role:
+                return room
+        return None
+
+    def _place_player_in_start_room(self):
+        start_room = self._get_room_by_role("start")
+        if not start_room:
+            return
+
+        start_x, start_y = start_room.get_center()
+        # Ensure player pos valid
+        # Try center first, if blocked try nearby positions
+        positions_to_try = [
+            (start_x, start_y),
+            (start_x + 1, start_y),
+            (start_x - 1, start_y),
+            (start_x, start_y + 1),
+            (start_x, start_y - 1)
+        ]
+
+        placed = False
+        for px, py in positions_to_try:
+            if (px, py) in start_room.get_tiles() and not self.is_position_blocked(px, py):
+                # Set player position directly
+                self.player.grid_x = px
+                self.player.grid_y = py
+                self.player.position = grid_to_world(px, py)
+                self.player.target_position = self.player.position
+                self.player.is_moving = False
+                print(f"Player placed at grid position: ({px}, {py})")
+                placed = True
+                break
+
+        if not placed:
+            # Fallback to any position in room
+            for tx, ty in start_room.get_tiles():
+                if not self.is_position_blocked(tx, ty):
+                    self.player.grid_x = tx
+                    self.player.grid_y = ty
+                    self.player.position = grid_to_world(tx, ty)
                     self.player.target_position = self.player.position
                     self.player.is_moving = False
-                    print(f"Player placed at grid position: ({px}, {py})")
-                    placed = True
+                    print(f"Player placed at fallback grid position: ({tx}, {ty})")
                     break
-            
-            if not placed:
-                # Fallback to any position in room
-                for tx, ty in start_room.get_tiles():
-                    if not self.is_position_blocked(tx, ty):
-                        self.player.grid_x = tx
-                        self.player.grid_y = ty
-                        self.player.position = grid_to_world(tx, ty)
-                        self.player.target_position = self.player.position
-                        self.player.is_moving = False
-                        print(f"Player placed at fallback grid position: ({tx}, {ty})")
-                        break
 
-        # Turn counter moved to GameUI.py
-    
-    def _spawn_enemies(self):
-        """Spawn enemies in non-starting rooms."""
-        if len(self.rooms) < 2:
+    def _place_staircase(self):
+        exit_room = self._get_room_by_role("exit")
+        if not exit_room:
             return
-            
-        # Spawn 1-2 enemies per room (skip starting room)
-        for room in self.rooms[1:]:  # Skip first room (starting room)
+
+        exit_x, exit_y = exit_room.get_center()
+        positions_to_try = [
+            (exit_x, exit_y),
+            (exit_x + 1, exit_y),
+            (exit_x - 1, exit_y),
+            (exit_x, exit_y + 1),
+            (exit_x, exit_y - 1)
+        ]
+
+        for sx, sy in positions_to_try:
+            if (sx, sy) in exit_room.get_tiles() and not self.is_position_blocked(sx, sy):
+                self.staircase = Staircase(sx, sy)
+                return
+
+        # Fallback to any position in the exit room
+        for tx, ty in exit_room.get_tiles():
+            if not self.is_position_blocked(tx, ty):
+                self.staircase = Staircase(tx, ty)
+                return
+
+    def _spawn_enemies(self):
+        """Spawn enemies in normal rooms (skips the start room and the exit room)."""
+        spawn_rooms = [room for room in self.rooms if room.role == "normal"]
+        if not spawn_rooms:
+            return
+
+        # Spawn 1-2 enemies per room
+        for room in spawn_rooms:
             room_tiles = list(room.get_tiles())
             room_size = len(room_tiles)
             
@@ -181,6 +251,12 @@ class GameBoard:
         #Turn complete if all done (wait for anims/actions to finish)
         if self.turn_in_progress and all_done:
             self.turn_in_progress = False
+
+        # Check for floor transition once the player has settled on a tile
+        if (self.staircase and all_done and
+                self.player.grid_x == self.staircase.grid_x and
+                self.player.grid_y == self.staircase.grid_y):
+            self.advance_floor()
     
     def create_dungeon_tiles(self):
         """Create tiles for all rooms and corridors in the dungeon."""
