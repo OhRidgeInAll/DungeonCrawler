@@ -3,6 +3,10 @@ from ursina.prefabs.sprite_sheet_animation import SpriteSheetAnimation
 import constants
 from Actor import *
 
+ATTACK_ANIMATION_FPS = 8
+ATTACK_ANIMATION_FRAMES = 3
+ATTACK_ANIMATION_DURATION = ATTACK_ANIMATION_FRAMES / ATTACK_ANIMATION_FPS
+
 class Player(Actor):
     def __init__(self, parent):
         # Position will be set by GameBoard after dungeon generation
@@ -16,20 +20,23 @@ class Player(Actor):
             team=0
             )
         
-        # Fixed implementation I thought texture loading was correct
-        # SpriteAnimation setup for player character
+        # SpriteAnimation setup for player character - idle/walk/attack rows
         self.sprite = SpriteSheetAnimation(
             'assets/Robot.png',
-            tileset_size=(2, 1),  # 2 frames horizontally, 1 row
-            fps=6,
+            tileset_size=(4, 3),
+            fps=ATTACK_ANIMATION_FPS,
             animations={
-                'idle': ((0, 0), (1, 0)),  # Frame 0 to frame 1
+                'idle': ((0, 0), (1, 0)),
+                'walk': ((0, 1), (3, 1)),
+                'attack': ((0, 2), (2, 2)),
             },
             parent=self,
             position=(0, 0, 0),
             scale=(constants.TILE_SIZE * 0.8, constants.TILE_SIZE * 0.8)
         )
+        self.sprite_state = 'idle'
         self.sprite.play_animation('idle')
+        self.is_attack_animation_playing = False
         self.health = 100
         self.grid_x = 0  # temp, will be set by gameboard (both x,y)
         self.grid_y = 0
@@ -151,6 +158,7 @@ class Player(Actor):
             target.take_damage(self.attack_power)
             self.has_attacked_this_turn = True
             self.show_attack_effect(target, target_position)
+            self._play_attack_animation()
             return True
         return False
     
@@ -190,4 +198,21 @@ class Player(Actor):
             if (self.position - self.target_position).length() < 0.01:
                 self.position = self.target_position
                 self.is_moving = False
+
+        if not self.is_attack_animation_playing:
+            self._set_sprite_state('walk' if self.is_moving else 'idle')
+
+    def _set_sprite_state(self, state):
+        if self.sprite_state != state:
+            self.sprite_state = state
+            self.sprite.play_animation(state)
+
+    def _play_attack_animation(self):
+        self.is_attack_animation_playing = True
+        self._set_sprite_state('attack')
+        invoke(self._end_attack_animation, delay=ATTACK_ANIMATION_DURATION)
+
+    def _end_attack_animation(self):
+        self.is_attack_animation_playing = False
+        self._set_sprite_state('walk' if self.is_moving else 'idle')
     

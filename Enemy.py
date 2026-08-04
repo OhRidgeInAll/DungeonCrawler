@@ -5,16 +5,23 @@ import random
 
 class Enemy(Actor):
     """Base enemy: grid movement, vision, and melee-chase AI shared by all archetypes."""
+    #Test graphics: red = grunt, gray = tank, orange = sniper
     archetype_id = "enemy"
 
-    def __init__(self, grid_x, grid_y, game_board, color=color.red):
-        super().__init__(
+    def __init__(self, grid_x, grid_y, game_board, tint=color.red, texture=None):
+        entity_kwargs = dict(
             model='quad',
-            color=color,
             scale=(TILE_SIZE * 0.8, TILE_SIZE * 0.8),
-            position = grid_to_world(grid_x, grid_y),
-            team = 1
+            position=grid_to_world(grid_x, grid_y),
+            team=1
         )
+        if texture:
+            # Untinted white so the texture's own baked-in colors show through as drawn.
+            entity_kwargs['texture'] = texture
+            entity_kwargs['color'] = color.white
+        else:
+            entity_kwargs['color'] = tint
+        super().__init__(**entity_kwargs)
         self.grid_x = grid_x  # Integer grid column
         self.grid_y = grid_y  # Integer grid row
         self.game_board = game_board
@@ -130,7 +137,7 @@ class GruntEnemy(Enemy):
     archetype_id = "grunt"
 
     def __init__(self, grid_x, grid_y, game_board):
-        super().__init__(grid_x, grid_y, game_board, color=color.red)
+        super().__init__(grid_x, grid_y, game_board, texture='assets/enemy_grunt.png')
         self.health = random.randint(60, 100)
         self.attack_power = random.randint(6, 10)
         self.move_speed = 30
@@ -143,7 +150,7 @@ class TankEnemy(Enemy):
     archetype_id = "tank"
 
     def __init__(self, grid_x, grid_y, game_board):
-        super().__init__(grid_x, grid_y, game_board, color=color.gray)
+        super().__init__(grid_x, grid_y, game_board, texture='assets/enemy_tank.png')
         self.health = random.randint(130, 170)
         self.attack_power = random.randint(12, 18)
         self.move_speed = 15
@@ -156,7 +163,7 @@ class SniperEnemy(Enemy):
     archetype_id = "sniper"
 
     def __init__(self, grid_x, grid_y, game_board):
-        super().__init__(grid_x, grid_y, game_board, color=color.orange)
+        super().__init__(grid_x, grid_y, game_board, texture='assets/enemy_sniper.png')
         self.health = random.randint(35, 55)
         self.attack_power = random.randint(5, 9)
         self.move_speed = 25
