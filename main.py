@@ -135,11 +135,14 @@ def input(key):
         game.player.health = game.player.max_health
         print(f"[DEBUG] Healed to {game.player.health}/{game.player.max_health}")
 
-    # Right mouse button for pathfinding movement - COMMENTED OUT due to bugs
-    # elif key == 'right mouse down':
-    #     # Get world position from mouse
-    #     if mouse.world_point:
-    #         mouse_controller.on_right_click(mouse.world_point)
+    # Right mouse button: click-to-move via pathfinding
+    elif key == 'right mouse down':
+        if mouse.world_point:
+            mouse_controller.on_right_click(mouse.world_point)
+
+    # Any manual movement key cancels an in-progress auto-walk
+    if key in ('w', 'a', 's', 'd'):
+        mouse_controller.stop()
 
 def update():
     # Update game state

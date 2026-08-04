@@ -1,0 +1,185 @@
+"""Automated regression tests for core game logic.
+
+Runs fully headless via Ursina's window_type='none' (no GPU/display needed - safe for
+CI runners), and tests the real game classes directly rather than duplicated mock logic.
+Replaces the older test_*.py/debug_*.py scripts, which were interactive, called
+app.run() (which blocks forever waiting for a window), and had no assertions - pytest
+would pick them up by filename convention and hang/fail on every push.
+"""
+from pathlib import Path
+from ursina import Ursina, application
+
+app = Ursina(window_type='none')
+# Ursina defaults asset_folder to Path(sys.argv[0]).parent, which under `pytest` points at
+# pytest's own launcher rather than this file - point it at the actual project directory
+# (same fix main.py already applies for PyInstaller's frozen-build asset path).
+application.asset_folder = Path(__file__).parent
+
+from GameBoard import GameBoard
+from Enemy import GruntEnemy, TankEnemy, SniperEnemy
+from Part import LOOT_TABLE
+from Pathfinding import MouseController
+from constants import grid_to_world
+
+
+def clear_tile(game, x, y):
+    """Guarantee a tile is walkable, regardless of the dungeon's random obstacle placement."""
+    game.obstacle_spawner.obstacle_positions.discard((x, y))
+    game.obstacle_spawner.obstacles = [
+        o for o in game.obstacle_spawner.obstacles if not (o.grid_x == x and o.grid_y == y)
+    ]
+
+
+def test_dungeon_has_exactly_one_start_and_exit_room():
+    game = GameBoard()
+    roles = [room.role for room in game.rooms]
+    assert roles.count("start") == 1
+    assert roles.count("exit") == 1
+
+    start_room = game._get_room_by_role("start")
+    exit_room = game._get_room_by_role("exit")
+    assert game.player.grid_position in start_room.get_tiles()
+    assert (game.staircase.grid_x, game.staircase.grid_y) in exit_room.get_tiles()
+
+
+def test_enemies_only_spawn_in_normal_rooms():
+    game = GameBoard()
+    for enemy in game.enemies:
+        room = game.get_room_at_position(enemy.grid_x, enemy.grid_y)
+        assert room is not None and room.role == "normal"
+
+
+def test_advance_floor_regenerates_dungeon_and_keeps_player():
+    game = GameBoard()
+    player = game.player
+    old_floor = game.floor_number
+
+    game.advance_floor()
+
+    assert game.floor_number == old_floor + 1
+    assert game.player is player  # same player instance carries over
+    new_start = game._get_room_by_role("start")
+    assert player.grid_position in new_start.get_tiles()
+    assert game.staircase is not None
+
+
+def test_enemy_dealing_damage_does_not_crash_on_player_death():
+    """Regression test: Actor.die() used to crash inside Ursina's destroy() because
+    SpriteSheetAnimation.animations is a dict, not a list of killable objects."""
+    game = GameBoard()
+    player = game.player
+    player.health = 1
+    player.take_damage(9999)
+    assert player.health <= 0
+
+
+def test_enemy_archetypes_have_distinct_stats():
+    game = GameBoard()
+    grunt = GruntEnemy(0, 0, game)
+    tank = TankEnemy(0, 0, game)
+    sniper = SniperEnemy(0, 0, game)
+
+    assert tank.health > grunt.health
+    assert tank.move_speed < grunt.move_speed
+    assert sniper.attack_range > grunt.attack_range
+    assert sniper.health < grunt.health
+
+
+def test_loot_table_parts_match_their_archetype():
+    for archetype_id, parts in LOOT_TABLE.items():
+        for part in parts:
+            assert part.source_archetype == archetype_id
+            assert part.slot in ("arm", "legs", "core")
+
+
+def test_player_equip_and_unequip_recompute_stats():
+    game = GameBoard()
+    player = game.player
+    base_attack_power = player.attack_power
+
+    sniper_arm = LOOT_TABLE["sniper"][0]
+    player.inventory.append(sniper_arm)
+    assert player.equip(sniper_arm)
+    assert player.attack_power == base_attack_power + sniper_arm.modifiers.get('attack_power', 0)
+
+    assert player.unequip("arm")
+    assert player.attack_power == base_attack_power
+    assert sniper_arm in player.inventory
+
+
+def test_player_max_health_clamps_down_when_it_shrinks():
+    game = GameBoard()
+    player = game.player
+    tank_core = LOOT_TABLE["tank"][2]  # max_health modifier
+
+    player.health = player.max_health
+    health_before_equip = player.health
+    player.inventory.append(tank_core)
+    player.equip(tank_core)
+    assert player.health == health_before_equip  # unchanged, no free heal
+    assert player.max_health > health_before_equip
+
+    boosted_max = player.max_health
+    player.health = boosted_max
+    player.unequip("core")
+    assert player.health == player.max_health  # clamped down, never above the new max
+    assert player.max_health < boosted_max
+
+
+def test_movement_queue_replaces_stale_action_instead_of_piling_up():
+    """Regression test: queue_player_action used to append to a FIFO queue. If a
+    second key was pressed while a turn was still resolving, its action would sit
+    unprocessed until some later, unrelated keypress fired it instead."""
+    game = GameBoard()
+    player = game.player
+    start_room = game._get_room_by_role("start")
+    sx, sy = start_room.get_center()
+    for tx, ty in [(sx, sy), (sx, sy + 1), (sx + 1, sy + 1)]:
+        clear_tile(game, tx, ty)
+
+    player.grid_x, player.grid_y = sx, sy
+    player.position = grid_to_world(sx, sy)
+    player.is_moving = False
+
+    game.queue_player_action('move', sx, sy + 1)
+    game.process_turn()
+    assert game.turn_in_progress
+
+    # A second action queued mid-turn must replace the first, not queue alongside it.
+    game.queue_player_action('move', sx + 1, sy + 1)
+    game.process_turn()  # no-op: a turn is already in progress
+    assert game.action_queue == [('move', sx + 1, sy + 1)]
+
+
+def test_mouse_controller_schedules_at_most_one_step_per_burst():
+    """Regression test: MouseController.update() used to call invoke() every frame
+    with no guard, so dozens could stack up while waiting on one turn to resolve -
+    each popping another waypoint regardless of whether a move had actually landed."""
+    game = GameBoard()
+    player = game.player
+    mc = MouseController(game)
+    start_room = game._get_room_by_role("start")
+    sx, sy = start_room.get_center()
+    clear_tile(game, sx, sy + 1)
+
+    player.grid_x, player.grid_y = sx, sy
+    player.position = grid_to_world(sx, sy)
+    player.is_moving = False
+    game.enemies.clear()  # isolate from randomly-spawned enemies wandering into the way
+
+    mc.path = [(sx, sy + 1)]
+    mc.active = True
+    mc._advance()
+    assert player.grid_position == (sx, sy + 1)
+    assert not mc.active  # path exhausted, stops itself
+
+    # Resolve the turn, then hammer update() as if many frames passed before it resolved.
+    player.position = player.target_position
+    player.is_moving = False
+    game._process_enemy_turns()
+
+    mc.path = [(sx, sy)]
+    mc.active = True
+    for _ in range(50):
+        mc.update()
+    assert mc._step_scheduled  # exactly one pending step, not fifty

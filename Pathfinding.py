@@ -93,8 +93,7 @@ class AStarPathfinder:
         """Heuristic function for A* (Manhattan distance)."""
         return self.distance(a, b)
     
-    def find_path_with_vision_check(self, start: Tuple[int, int], goal: Tuple[int, int], 
-                                   vision_range: int = 5) -> Optional[List[Tuple[int, int]]]:
+    def find_path_with_vision_check(self, start: Tuple[int, int], goal: Tuple[int, int]) -> Optional[List[Tuple[int, int]]]:
         """
         Find path but stop if any enemy is within vision range during the path.
         Returns path up to the point before enemy is detected.
@@ -102,102 +101,103 @@ class AStarPathfinder:
         full_path = self.find_path(start, goal)
         if not full_path:
             return None
-        
-        # Check each step of the path for enemies in vision
+
         safe_path = []
         for step_pos in full_path:
-            # Check if any enemy is within vision range of this position
-            enemy_in_sight = False
-            for enemy in self.game_board.enemies:
-                dist = self.distance(step_pos, (enemy.grid_x, enemy.grid_y))
-                if dist <= vision_range:
-                    enemy_in_sight = True
-                    break
-            
-            if enemy_in_sight:
+            if self.enemy_in_vision_of(step_pos):
                 # Stop path before this step (enemy detected)
                 break
-            
             safe_path.append(step_pos)
-        
+
         return safe_path if safe_path else None
+
+    def enemy_in_vision_of(self, pos: Tuple[int, int]) -> bool:
+        """Whether any enemy's own vision_range would cover the given grid position."""
+        for enemy in self.game_board.enemies:
+            vision = getattr(enemy, 'vision_range', 5)
+            if self.distance(pos, (enemy.grid_x, enemy.grid_y)) <= vision:
+                return True
+        return False
 
 
 class MouseController:
-    """Handles mouse controls for player movement with pathfinding."""
-    
+    """Handles right-click-to-move: computes a path once, then advances it exactly
+    one grid step per resolved turn, stopping early if an enemy comes into vision.
+
+    Previous versions of this scheduled a new invoke() every frame while waiting on
+    a turn to resolve, with nothing to stop those from stacking up - dozens could
+    fire back-to-back, each popping another step off the path regardless of whether
+    the prior step's turn had actually finished, causing the player to warp through
+    several waypoints at once. `_step_scheduled` below is the fix: only one pending
+    step is ever allowed in flight at a time.
+    """
+
+    STEP_DELAY = 0.15  # brief pause after a turn resolves before taking the next step
+
     def __init__(self, game_board):
         self.game_board = game_board
         self.pathfinder = AStarPathfinder(game_board)
-        self.current_path: List[Tuple[int, int]] = []
-        self.path_index = 0
-        self.following_path = False
-        
+        self.path: List[Tuple[int, int]] = []
+        self.active = False
+        self._step_scheduled = False
+
     def on_right_click(self, world_pos):
         """Handle right-click to move player to clicked position."""
-        # Convert world position to grid coordinates
         grid_x, grid_y = world_to_grid(world_pos)
-        
-        # Check if position is valid
+
         if not self.game_board.is_position_in_dungeon(grid_x, grid_y):
             print(f"Position ({grid_x}, {grid_y}) not in dungeon")
             return
-        
+
         if self.game_board.is_position_blocked(grid_x, grid_y):
             print(f"Position ({grid_x}, {grid_y}) is blocked")
             return
-        
-        # Get player current position
-        player_pos = (self.game_board.player.grid_x, self.game_board.player.grid_y)
-        
-        # Find path with vision check
+
+        player_pos = self.game_board.player.grid_position
         path = self.pathfinder.find_path_with_vision_check(player_pos, (grid_x, grid_y))
-        
+
         if not path:
             print("No valid path found")
+            self.stop()
             return
-        
+
         print(f"Path found with {len(path)} steps")
-        self.current_path = path
-        self.path_index = 0
-        self.following_path = True
-        
-        # Start following the path (one step per turn)
-        self.follow_next_step()
-    
-    def follow_next_step(self):
-        """Follow the next step in the current path."""
-        if not self.following_path or self.path_index >= len(self.current_path):
-            self.following_path = False
+        self.path = path
+        self.active = True
+        self._advance()
+
+    def stop(self):
+        """Cancel any in-progress auto-walk."""
+        self.active = False
+        self.path = []
+
+    def _advance(self):
+        """Take exactly one step of the path, if it's still safe to do so."""
+        if not self.active or not self.path:
+            self.stop()
             return
-        
-        next_pos = self.current_path[self.path_index]
-        self.path_index += 1
-        
-        # Queue move action and process turn
+
+        next_pos = self.path.pop(0)
+
+        if self.pathfinder.enemy_in_vision_of(next_pos):
+            self.stop()
+            return
+
         self.game_board.queue_player_action('move', next_pos[0], next_pos[1])
         self.game_board.process_turn()
-        
-        # Check if we should continue (no enemies in vision at next position)
-        # The pathfinder already checked this, but we double-check
-        enemy_in_sight = False
-        for enemy in self.game_board.enemies:
-            dist = abs(next_pos[0] - enemy.grid_x) + abs(next_pos[1] - enemy.grid_y)
-            if dist <= 5:  # Vision range
-                enemy_in_sight = True
-                break
-        
-        if enemy_in_sight or self.path_index >= len(self.current_path):
-            # Enemy detected or path complete
-            self.following_path = False
-        else:
-            # Continue following path after current turn completes
-            # We'll check in update() if turn is complete
-            pass
-    
+
+        if not self.path:
+            self.stop()
+
     def update(self):
-        """Update mouse controller state."""
-        # Continue following path if turn is complete and we're still following
-        if self.following_path and not self.game_board.turn_in_progress:
-            # Small delay to ensure animations complete
-            invoke(self.follow_next_step, delay=0.2)
+        """Once per frame: if we're auto-walking and the last turn has resolved,
+        schedule exactly one more step (never more than one pending at a time)."""
+        if not self.active or self.game_board.turn_in_progress or self._step_scheduled:
+            return
+
+        self._step_scheduled = True
+        invoke(self._scheduled_advance, delay=self.STEP_DELAY)
+
+    def _scheduled_advance(self):
+        self._step_scheduled = False
+        self._advance()
