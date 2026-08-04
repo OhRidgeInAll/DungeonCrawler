@@ -114,8 +114,11 @@ class Enemy(Actor):
         return (self.grid_x, self.grid_y)
 
     def _on_death(self):
-        """Callback when enemy dies - remove from game board."""
+        """Callback when enemy dies - remove from game board and chance to drop part."""
         if hasattr(self, 'game_board') and self.game_board:
+            if hasattr(self.game_board, 'spawn_loot_drop'):
+                self.game_board.spawn_loot_drop(self.archetype_id, self.grid_x, self.grid_y)
+
             # Remove from enemies list
             if hasattr(self.game_board, 'enemies') and self in self.game_board.enemies:
                 self.game_board.enemies.remove(self)

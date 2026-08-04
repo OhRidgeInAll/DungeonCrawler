@@ -37,13 +37,68 @@ class Player(Actor):
         self.move_speed = 50
         self.is_moving = False
 
-        # Attack range checking will use distance instead of collider
+        # Attack range checking will use distance instead of collider - Impl for ranged weaponry
         self.attack_range = constants.ATTACK_RANGE
         self.has_attacked_this_turn = False
-    
+
+        # Equipment / salvage system - Raw player stats TODO: Attach to stock parts
+        self.base_attack_power = self.attack_power
+        self.base_attack_range = self.attack_range
+        self.base_move_speed = self.move_speed
+        self.base_max_health = self.health
+
+        self.equipment = {"arm": None, "legs": None, "core": None}
+        self.inventory = []
+        self._recompute_stats()
+
     @property
     def grid_position(self):
         return (self.grid_x, self.grid_y)
+
+    def equip(self, part):
+        """Swap/Equip a salvaged part from the inventory, returning any part it replaces to the inventory."""
+        if part not in self.inventory:
+            return False
+
+        previous = self.equipment.get(part.slot)
+        self.inventory.remove(part)
+        if previous is not None:
+            self.inventory.append(previous)
+        self.equipment[part.slot] = part
+        self._recompute_stats()
+        return True
+
+    def unequip(self, slot):
+        """Move the part equipped in the given slot back to the inventory."""
+        part = self.equipment.get(slot)
+        if part is None:
+            return False
+
+        self.equipment[slot] = None
+        self.inventory.append(part)
+        self._recompute_stats()
+        return True
+
+    def _recompute_stats(self):
+        """Recalculate effective stats from base stats plus all equipped part modifiers."""
+        attack_power = self.base_attack_power
+        attack_range = self.base_attack_range
+        move_speed = self.base_move_speed
+        max_health = self.base_max_health
+
+        for part in self.equipment.values():
+            if part is None:
+                continue
+            attack_power += part.modifiers.get('attack_power', 0)
+            attack_range += part.modifiers.get('attack_range', 0)
+            move_speed += part.modifiers.get('move_speed', 0)
+            max_health += part.modifiers.get('max_health', 0)
+
+        self.attack_power = attack_power
+        self.attack_range = attack_range
+        self.move_speed = move_speed
+        self.max_health = max_health
+        self.health = min(self.health, self.max_health)
 
     def move_to_grid_position(self, x, y):
         if not self.is_moving and self.can_move_to(x, y):

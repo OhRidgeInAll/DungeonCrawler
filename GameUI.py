@@ -61,13 +61,24 @@ class CombatUI:
             color=color.yellow,
             origin=(0, 0)
         )
-    
+
+        # Equipment / inventory panel (bottom-left) TODO: Make this a menu either from pause or dockable by keypress
+        self.equipment_text = Text(
+            text="",
+            parent=camera.ui,
+            position=(-0.85, -0.2),
+            scale=1.1,
+            color=color.white,
+            origin=(-0.5, 0.5)
+        )
+
     def update(self, player):
         # Update health bar
-        health_pct = max(0, player.health / 100.0)
+        max_health = getattr(player, 'max_health', 100)
+        health_pct = max(0, player.health / max_health) if max_health else 0
         self.health_bar.scale_x = 0.98 * health_pct
-        self.health_text.text = f"{int(player.health)}/100"
-        
+        self.health_text.text = f"{int(player.health)}/{int(max_health)}"
+
         # Update attack status (turn-based)
         if hasattr(player, 'has_attacked_this_turn') and player.has_attacked_this_turn:
             self.attack_status.text = "ATTACKED"
@@ -75,10 +86,24 @@ class CombatUI:
         else:
             self.attack_status.text = "READY"
             self.attack_status.color = color.green
-        
+
         # Update turn counter (if available)
         if hasattr(player, 'game') and hasattr(player.game, 'current_turn'):
             self.turn_text.text = f"Turn: {player.game.current_turn}"
-        
+
         # Update range indicator
         self.range_indicator.text = f"Range: {getattr(player, 'attack_range', 1.5)}"
+
+        # Update equipment / inventory panel
+        if hasattr(player, 'equipment'):
+            lines = ["Equipped:"]
+            for slot in ("arm", "legs", "core"):
+                part = player.equipment.get(slot)
+                lines.append(f"  {slot}: {part.name if part else '-'}")
+            lines.append("Inventory (press number to equip):")
+            if player.inventory:
+                for i, part in enumerate(player.inventory, start=1):
+                    lines.append(f"  [{i}] {part.name} ({part.slot})")
+            else:
+                lines.append("  (empty)")
+            self.equipment_text.text = "\n".join(lines)
