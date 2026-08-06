@@ -19,7 +19,7 @@ from GameBoard import GameBoard
 from Enemy import GruntEnemy, TankEnemy, SniperEnemy, spawn_random_enemy
 from Part import LOOT_TABLE, roll_loot
 from Pathfinding import MouseController
-from GameUI import CombatUI
+from GameUI import CombatUI, InventoryScreen
 from constants import grid_to_world
 
 
@@ -353,3 +353,84 @@ def test_player_death_sets_flag_and_further_attacks_dont_crash():
 
     # A second enemy taking its turn against the now-destroyed player must not crash.
     enemy2.take_turn()
+
+
+def test_inventory_screen_shows_equipped_slots_and_inventory():
+    game = GameBoard()
+    player = game.player
+    screen = InventoryScreen(on_close=lambda: None)
+
+    sniper_arm = LOOT_TABLE["sniper"][0]
+    player.inventory.append(sniper_arm)
+    player.equip(sniper_arm)
+
+    grunt_legs = LOOT_TABLE["grunt"][1]
+    player.inventory.append(grunt_legs)
+
+    screen.show(player)
+    # Equipped rows: arm has a part (label + Unequip button) + 2 empty slots (label only),
+    # plus an "Inventory:" header, plus one unequipped part (label + Equip button).
+    assert len(screen.dynamic_entities) == 4 + 1 + 2
+
+    screen.hide()
+    assert screen.dynamic_entities == []
+    assert not screen.background.enabled
+
+
+def test_inventory_screen_equip_and_unequip_buttons_affect_player():
+    game = GameBoard()
+    player = game.player
+    screen = InventoryScreen(on_close=lambda: None)
+
+    sniper_arm = LOOT_TABLE["sniper"][0]
+    player.inventory.append(sniper_arm)
+    screen.show(player)
+
+    screen._equip(sniper_arm)  # what the dynamically-built "Equip" button calls
+    assert player.equipment["arm"] is sniper_arm
+    assert sniper_arm not in player.inventory
+
+    screen._unequip("arm")  # what the "Unequip" button calls
+    assert player.equipment["arm"] is None
+    assert sniper_arm in player.inventory
+
+
+def test_inventory_screen_close_hides_and_calls_callback():
+    closed = []
+    screen = InventoryScreen(on_close=lambda: closed.append(True))
+    game = GameBoard()
+    screen.show(game.player)
+
+    screen._handle_close()
+
+    assert closed == [True]
+    assert not screen.visible
+
+
+def test_quit_to_title_teardown_leaves_a_clean_slate_for_a_new_game():
+    """Regression test for the Quit to Title teardown pattern in main.py:
+    game._clear_floor_entities() (already used by advance_floor()) plus
+    player.destroy_silently(), since floor transitions deliberately preserve the
+    player but quitting to title should not. Confirms a fresh GameBoard can be built
+    right after, the same as clicking New Game a second time in the same process.
+
+    Regression note: this used to call destroy(game.player) directly, which crashes -
+    it bypasses Actor.die()'s _stop_sprite_animations() workaround for Ursina's
+    destroy() choking on SpriteSheetAnimation.animations. destroy_silently() exists
+    specifically to destroy an Actor outside of combat death without hitting that."""
+    game = GameBoard()
+    assert len(game.tiles) > 0
+    assert game.player is not None
+
+    game._clear_floor_entities()
+    if game.player is not None and not game.player_defeated:
+        game.player.destroy_silently()
+
+    assert game.tiles == []
+    assert game.enemies == []
+    assert game.pickups == []
+
+    # A brand new game must build cleanly afterward, in the same process.
+    fresh_game = GameBoard()
+    assert fresh_game.player is not None
+    assert fresh_game.floor_number == 1
