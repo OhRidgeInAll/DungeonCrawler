@@ -95,7 +95,23 @@ pause_menu = PauseMenu()
 
 print("Game started!")
 
+_last_diag_turn = -1
+DIAG_TURN_INTERVAL = 25  # auto-print diagnostics every N turns
+_last_seen_floor = 0  # 0 so the very first update() call builds the initial floor's minimap
+
+def print_diagnostics(tag="[DEBUG]"):
+    """Live entity/sequence counts, to track down long-session lag -
+     gets real numbers since leak couldn't be found.
+     Maybe I'm losing it lmao"""
+    print(f"{tag} turn={game.current_turn} floor={game.floor_number} "
+          f"scene.entities={len(scene.entities)} application.sequences={len(application.sequences)} "
+          f"tiles={len(game.tiles)} obstacles={len(game.obstacle_spawner.obstacles)} "
+          f"enemies={len(game.enemies)} pickups={len(game.pickups)}")
+
 def input(key):
+    if game.player_defeated:
+        return  # player entity is destroyed - stop here rather than crash on it
+
     # Handle movement keys - queue actions instead of immediate movement
     x, y = game.player.grid_position
     
@@ -135,6 +151,10 @@ def input(key):
         game.player.health = game.player.max_health
         print(f"[DEBUG] Healed to {game.player.health}/{game.player.max_health}")
 
+    # DEBUG: print live entity/sequence counts
+    elif key == 'p' and DEBUG_MODE:
+        print_diagnostics(tag="[DEBUG]")
+
     # Right mouse button: click-to-move via pathfinding
     elif key == 'right mouse down':
         if mouse.world_point:
@@ -145,10 +165,23 @@ def input(key):
         mouse_controller.stop()
 
 def update():
+    global _last_diag_turn, _last_seen_floor
+
+    if game.player_defeated:
+        return  # player entity is destroyed - stop here rather than crash on it
+
     # Update game state
     game.update()
     mouse_controller.update()
-    
+
+    if DEBUG_MODE and game.current_turn != _last_diag_turn and game.current_turn % DIAG_TURN_INTERVAL == 0:
+        _last_diag_turn = game.current_turn
+        print_diagnostics(tag="[DIAG]")
+
+    if game.floor_number != _last_seen_floor:
+        _last_seen_floor = game.floor_number
+        ui.rebuild_minimap(game.rooms, game.room_generator.get_bounds())
+
     # Tile highlighting
     if mouse.hovered_entity and isinstance(mouse.hovered_entity, GameTile):
         mouse.hovered_entity.highlight()

@@ -66,9 +66,13 @@ class Actor(Entity):
     
     def attack(self, target):
         if self.can_attack(target):
+            # Capture position before dealing damage - a lethal hit destroys target
+            # synchronously via take_damage() -> die(), so target.position would no
+            # longer be readable by the time show_attack_effect() needs it.
+            target_position = target.position if hasattr(target, 'position') else None
             target.take_damage(self.attack_power)
             self.attack_cooldown = ATTACK_COOLDOWN
-            self.show_attack_effect(target)
+            self.show_attack_effect(target, target_position)
             return True
         return False
     

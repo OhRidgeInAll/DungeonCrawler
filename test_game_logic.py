@@ -16,9 +16,10 @@ app = Ursina(window_type='none')
 application.asset_folder = Path(__file__).parent
 
 from GameBoard import GameBoard
-from Enemy import GruntEnemy, TankEnemy, SniperEnemy
-from Part import LOOT_TABLE
+from Enemy import GruntEnemy, TankEnemy, SniperEnemy, spawn_random_enemy
+from Part import LOOT_TABLE, roll_loot
 from Pathfinding import MouseController
+from GameUI import CombatUI
 from constants import grid_to_world
 
 
@@ -70,6 +71,29 @@ def test_enemy_dealing_damage_does_not_crash_on_player_death():
     player = game.player
     player.health = 1
     player.take_damage(9999)
+    assert player.health <= 0
+
+
+def test_actor_attack_does_not_crash_on_lethal_hit():
+    """Regression test: the base Actor.attack() (used by every enemy) used to read
+    target.position for the visual effect AFTER take_damage() already dealt damage -
+    if that hit was lethal, take_damage() -> die() destroys the target synchronously,
+    so a killing blow would try to read position off an already-destroyed entity.
+    
+    Yet another instance of a missing "is this entity still alive?" check, which is why the player has a
+    `game.player_defeated` flag to let enemies know not to attack it again this turn.
+    (Dodging crashes)"""
+    game = GameBoard()
+    player = game.player
+    enemy = GruntEnemy(player.grid_x, player.grid_y + 1, game)
+    game.enemies.append(enemy)
+
+    player.health = 1
+    enemy.attack_cooldown = 0
+
+    attacked = enemy.attack(player)
+
+    assert attacked
     assert player.health <= 0
 
 
@@ -249,3 +273,83 @@ def test_stop_cancels_a_pending_scheduled_step():
     assert not mc._step_scheduled
     assert mc._pending_step is None
     assert pending not in ursina_application.sequences  # actually deregistered, not just forgotten
+
+
+def test_gameboard_difficulty_tracks_floor_number():
+    game = GameBoard()
+    assert game.difficulty == game.floor_number == 1
+    game.advance_floor()
+    assert game.difficulty == game.floor_number == 2
+
+
+def test_spawn_random_enemy_biases_toward_tougher_archetypes_at_high_difficulty():
+    import random
+    game = GameBoard()
+
+    random.seed(42)
+    low_counts = {"grunt": 0, "tank": 0, "sniper": 0}
+    for _ in range(1000):
+        enemy = spawn_random_enemy(0, 0, game, difficulty=1)
+        low_counts[enemy.archetype_id] += 1
+
+    random.seed(42)
+    high_counts = {"grunt": 0, "tank": 0, "sniper": 0}
+    for _ in range(1000):
+        enemy = spawn_random_enemy(0, 0, game, difficulty=20)
+        high_counts[enemy.archetype_id] += 1
+
+    assert high_counts["grunt"] < low_counts["grunt"]
+    assert high_counts["tank"] > low_counts["tank"]
+    assert high_counts["sniper"] > low_counts["sniper"]
+
+
+def test_roll_loot_drop_chance_rises_with_difficulty():
+    import random
+    random.seed(7)
+    low_drops = sum(1 for _ in range(1000) if roll_loot("grunt", difficulty=1) is not None)
+
+    random.seed(7)
+    high_drops = sum(1 for _ in range(1000) if roll_loot("grunt", difficulty=25) is not None)
+
+    assert high_drops > low_drops
+
+
+def test_combat_ui_minimap_reflects_current_floor():
+    game = GameBoard()
+    ui = CombatUI()
+
+    ui.rebuild_minimap(game.rooms, game.room_generator.get_bounds())
+    assert len(ui.minimap_room_entities) == len(game.rooms)
+
+    ui.update(game.player)
+    assert ui.floor_text.text == f"Floor: {game.floor_number}"
+
+    # Player marker should land inside the minimap's bounding box.
+    half = ui.MINIMAP_SIZE / 2
+    cx, cy = ui.MINIMAP_POSITION
+    mx, my, _ = ui.minimap_player_marker.position
+    assert cx - half <= mx <= cx + half
+    assert cy - half <= my <= cy + half
+
+
+def test_player_death_sets_flag_and_further_attacks_dont_crash():
+    """Regression test: found via a real crash - Camera tries to follow
+    player.position with no death check. Actor.die caused reliable crashes
+    also covers second attacker batch trying to attack a now-dead player."""
+    game = GameBoard()
+    player = game.player
+    assert game.player_defeated is False
+
+    enemy1 = GruntEnemy(player.grid_x, player.grid_y + 1, game)
+    enemy2 = GruntEnemy(player.grid_x, player.grid_y - 1, game)
+    game.enemies.extend([enemy1, enemy2])
+
+    player.health = 1
+    enemy1.attack_cooldown = 0
+    enemy2.attack_cooldown = 0
+
+    enemy1.attack(player)  # lethal - destroys the player entity
+    assert game.player_defeated is True
+
+    # A second enemy taking its turn against the now-destroyed player must not crash.
+    enemy2.take_turn()
