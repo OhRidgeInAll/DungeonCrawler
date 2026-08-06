@@ -58,9 +58,19 @@ class Player(Actor):
         self.inventory = []
         self._recompute_stats()
 
+        self.on_death = self._on_death
+
     @property
     def grid_position(self):
         return (self.grid_x, self.grid_y)
+
+    def _on_death(self):
+        """Flag the board so main.py stops touching this (now-destroyed) entity instead
+        of crashing on the next frame. A real Game Over screen is iteration 8's job,
+        once the menu/game-state machine exists to transition into."""
+        if hasattr(self, 'game') and self.game:
+            self.game.player_defeated = True
+            print("[GAME OVER] Player defeated.")
 
     def equip(self, part):
         """Swap/Equip a salvaged part from the inventory, returning any part it replaces to the inventory."""

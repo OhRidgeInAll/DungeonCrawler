@@ -32,10 +32,18 @@ LOOT_TABLE = {
 
 LOOT_DROP_CHANCE = 0.4
 
+# Drop Rate to difficulty scaling, simple scaling until some kind of loot table gets worked out.
+DIFFICULTY_DROP_BONUS_PER_LEVEL = 0.01
+MAX_DIFFICULTY_DROP_BONUS = 0.2
 
-def roll_loot(archetype_id):
-    """Maybe return a random Part dropped by the given enemy archetype, or None."""
+
+def roll_loot(archetype_id, difficulty=1):
+    """Maybe return a random Part dropped by the given enemy archetype, or None.
+    Drop chance rises modestly with difficulty (deeper floors)."""
     table = LOOT_TABLE.get(archetype_id)
-    if not table or random.random() > LOOT_DROP_CHANCE:
+    if not table:
+        return None
+    bonus = min(MAX_DIFFICULTY_DROP_BONUS, max(0, difficulty - 1) * DIFFICULTY_DROP_BONUS_PER_LEVEL)
+    if random.random() > LOOT_DROP_CHANCE + bonus:
         return None
     return random.choice(table)

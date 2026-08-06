@@ -44,6 +44,8 @@ class Enemy(Actor):
 
     def take_turn(self):
         """Enemy takes a turn: attack if possible, otherwise close the distance to the player."""
+        if getattr(self.game_board, 'player_defeated', False):
+            return  # player entity is destroyed - STOP STOOOOP he's already dead
         player = self.game_board.player
         if not player:
             return
@@ -172,6 +174,8 @@ class SniperEnemy(Enemy):
         self.retreat_distance = 2  # back away if the player gets this close
 
     def take_turn(self):
+        if getattr(self.game_board, 'player_defeated', False):
+            return  # player entity is destroyed - STOP STOOOOP he's already dead
         player = self.game_board.player
         if not player:
             return
@@ -188,16 +192,26 @@ class SniperEnemy(Enemy):
             self.move_toward_player(player.grid_x, player.grid_y)
 
 
-# Archetypes and their relative spawn weights.
+# Archetypes and their relative spawn weights at difficulty=1 (floor 1).
 ENEMY_ARCHETYPES = [
     (GruntEnemy, 0.5),
     (SniperEnemy, 0.3),
     (TankEnemy, 0.2),
 ]
 
-def spawn_random_enemy(grid_x, grid_y, game_board):
-    """Instantiate a random enemy archetype, weighted by ENEMY_ARCHETYPES."""
+# Relation between difficulty and higher level enemy spawn rate
+# Maximum difficulty cap, designed to be quick to tweak
+DIFFICULTY_WEIGHT_SHIFT_PER_LEVEL = 0.03
+MAX_DIFFICULTY_WEIGHT_SHIFT = 0.3
+
+def spawn_random_enemy(grid_x, grid_y, game_board, difficulty=1):
+    """Instantiate a random enemy archetype, weighted by ENEMY_ARCHETYPES and nudged
+    toward tougher archetypes as difficulty rises."""
+    shift = min(MAX_DIFFICULTY_WEIGHT_SHIFT, max(0, difficulty - 1) * DIFFICULTY_WEIGHT_SHIFT_PER_LEVEL)
     classes = [archetype for archetype, weight in ENEMY_ARCHETYPES]
-    weights = [weight for archetype, weight in ENEMY_ARCHETYPES]
+    weights = [
+        max(0.1, weight - shift) if archetype is GruntEnemy else weight + shift / 2
+        for archetype, weight in ENEMY_ARCHETYPES
+    ]
     enemy_class = random.choices(classes, weights=weights)[0]
     return enemy_class(grid_x, grid_y, game_board)

@@ -22,9 +22,16 @@ class GameBoard:
         self.current_turn = 0
         self.turn_in_progress = False
         self.action_queue = []
+        self.player_defeated = False
 
         self.player = None
         self._generate_floor()
+
+    @property
+    def difficulty(self):
+        """Scales with floor_number so it can never go stale; consumers (enemy
+        spawning, loot chance) each decide how strongly to react to it."""
+        return self.floor_number
 
     def _generate_floor(self):
         """Generate the dungeon layout, obstacles, enemies, and staircase for the current floor."""
@@ -161,7 +168,7 @@ class GameBoard:
 
     def spawn_loot_drop(self, archetype_id, grid_x, grid_y):
         """Roll a chance to drop an enemy part where an enemy died."""
-        part = roll_loot(archetype_id)
+        part = roll_loot(archetype_id, difficulty=self.difficulty)
         if part is None:
             return
         self.pickups.append(Pickup(grid_x, grid_y, part))
@@ -173,40 +180,43 @@ class GameBoard:
         if not spawn_rooms:
             return
 
-        # Spawn 1-2 enemies per room
+        difficulty = self.difficulty
+
+        # Spawn 1-2 enemies per room, nudged up slightly on deeper floors
         for room in spawn_rooms:
             room_tiles = list(room.get_tiles())
             room_size = len(room_tiles)
-            
+
             # Determine how many enemies to spawn (1-2, fewer for small rooms)
             max_enemies = min(2, room_size // 15)
             if max_enemies < 1:
                 max_enemies = 1
-                
+            max_enemies = min(4, max_enemies + int((difficulty - 1) // 5))
+
             num_enemies = random.randint(1, max_enemies)
             placed = 0
             attempts = 0
-            
+
             while placed < num_enemies and attempts < 50:
                 tx, ty = random.choice(room_tiles)
-                
+
                 # Don't spawn on doors or obstacles
                 if (tx, ty) in room.doors or self.is_position_blocked(tx, ty):
                     attempts += 1
                     continue
-                
+
                 position_occupied = False
                 for enemy in self.enemies:
                     if enemy.grid_x == tx and enemy.grid_y == ty:
                         position_occupied = True
                         break
-                
+
                 if not position_occupied:
-                    enemy = spawn_random_enemy(tx, ty, self)
+                    enemy = spawn_random_enemy(tx, ty, self, difficulty=difficulty)
                     self.enemies.append(enemy)
                     placed += 1
                     print(f"{enemy.archetype_id} spawned at ({tx}, {ty}) in room {room}")
-                
+
                 attempts += 1
     
     def process_turn(self):

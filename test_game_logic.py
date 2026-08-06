@@ -16,9 +16,10 @@ app = Ursina(window_type='none')
 application.asset_folder = Path(__file__).parent
 
 from GameBoard import GameBoard
-from Enemy import GruntEnemy, TankEnemy, SniperEnemy
-from Part import LOOT_TABLE
+from Enemy import GruntEnemy, TankEnemy, SniperEnemy, spawn_random_enemy
+from Part import LOOT_TABLE, roll_loot
 from Pathfinding import MouseController
+from GameUI import CombatUI
 from constants import grid_to_world
 
 
@@ -70,6 +71,29 @@ def test_enemy_dealing_damage_does_not_crash_on_player_death():
     player = game.player
     player.health = 1
     player.take_damage(9999)
+    assert player.health <= 0
+
+
+def test_actor_attack_does_not_crash_on_lethal_hit():
+    """Regression test: the base Actor.attack() (used by every enemy) used to read
+    target.position for the visual effect AFTER take_damage() already dealt damage -
+    if that hit was lethal, take_damage() -> die() destroys the target synchronously,
+    so a killing blow would try to read position off an already-destroyed entity.
+    
+    Yet another instance of a missing "is this entity still alive?" check, which is why the player has a
+    `game.player_defeated` flag to let enemies know not to attack it again this turn.
+    (Dodging crashes)"""
+    game = GameBoard()
+    player = game.player
+    enemy = GruntEnemy(player.grid_x, player.grid_y + 1, game)
+    game.enemies.append(enemy)
+
+    player.health = 1
+    enemy.attack_cooldown = 0
+
+    attacked = enemy.attack(player)
+
+    assert attacked
     assert player.health <= 0
 
 
@@ -183,3 +207,149 @@ def test_mouse_controller_schedules_at_most_one_step_per_burst():
     for _ in range(50):
         mc.update()
     assert mc._step_scheduled  # exactly one pending step, not fifty
+
+
+def test_on_right_click_defers_instead_of_dropping_step_mid_turn():
+    """Regression test: on_right_click() used to call _advance() unconditionally, even
+    while a turn was already resolving (e.g. from a recent WASD press). process_turn()
+    silently no-ops in that case, but _advance() had already popped the step off the
+    path - so the click was swallowed: no move happened, yet the controller believed
+    the walk had finished."""
+    game = GameBoard()
+    player = game.player
+    mc = MouseController(game)
+    start_room = game._get_room_by_role("start")
+    sx, sy = start_room.get_center()
+    clear_tile(game, sx, sy + 1)
+    game.enemies.clear()
+
+    player.grid_x, player.grid_y = sx, sy
+    player.position = grid_to_world(sx, sy)
+    player.is_moving = False
+
+    game.turn_in_progress = True  # simulate a turn already resolving
+    mc.on_right_click(grid_to_world(sx, sy + 1))
+
+    assert player.grid_position == (sx, sy)  # not dropped: simply not taken yet
+    assert mc.path == [(sx, sy + 1)]
+    assert mc.active
+
+    # Once the turn clears, update()'s normal scheduling picks the deferred step up.
+    game.turn_in_progress = False
+    mc.update()
+    assert mc._step_scheduled
+    mc._scheduled_advance()
+    assert player.grid_position == (sx, sy + 1)
+
+
+def test_stop_cancels_a_pending_scheduled_step():
+    """Regression test: stop() used to clear `active`/`path` but leave any already-
+    scheduled invoke() callback alive. A WASD press mid-schedule followed by a fresh
+    right-click within the delay window let the stale callback fire _advance() again
+    against the new walk's state - an extra, unscheduled step."""
+    from ursina import application as ursina_application
+
+    game = GameBoard()
+    player = game.player
+    mc = MouseController(game)
+    start_room = game._get_room_by_role("start")
+    sx, sy = start_room.get_center()
+    clear_tile(game, sx, sy + 1)
+    game.enemies.clear()
+
+    player.grid_x, player.grid_y = sx, sy
+    player.position = grid_to_world(sx, sy)
+    player.is_moving = False
+
+    mc.active = True
+    mc.path = [(sx, sy + 1)]
+    mc.update()
+    assert mc._pending_step is not None
+    pending = mc._pending_step
+    assert pending in ursina_application.sequences
+
+    mc.stop()
+
+    assert not mc._step_scheduled
+    assert mc._pending_step is None
+    assert pending not in ursina_application.sequences  # actually deregistered, not just forgotten
+
+
+def test_gameboard_difficulty_tracks_floor_number():
+    game = GameBoard()
+    assert game.difficulty == game.floor_number == 1
+    game.advance_floor()
+    assert game.difficulty == game.floor_number == 2
+
+
+def test_spawn_random_enemy_biases_toward_tougher_archetypes_at_high_difficulty():
+    import random
+    game = GameBoard()
+
+    random.seed(42)
+    low_counts = {"grunt": 0, "tank": 0, "sniper": 0}
+    for _ in range(1000):
+        enemy = spawn_random_enemy(0, 0, game, difficulty=1)
+        low_counts[enemy.archetype_id] += 1
+
+    random.seed(42)
+    high_counts = {"grunt": 0, "tank": 0, "sniper": 0}
+    for _ in range(1000):
+        enemy = spawn_random_enemy(0, 0, game, difficulty=20)
+        high_counts[enemy.archetype_id] += 1
+
+    assert high_counts["grunt"] < low_counts["grunt"]
+    assert high_counts["tank"] > low_counts["tank"]
+    assert high_counts["sniper"] > low_counts["sniper"]
+
+
+def test_roll_loot_drop_chance_rises_with_difficulty():
+    import random
+    random.seed(7)
+    low_drops = sum(1 for _ in range(1000) if roll_loot("grunt", difficulty=1) is not None)
+
+    random.seed(7)
+    high_drops = sum(1 for _ in range(1000) if roll_loot("grunt", difficulty=25) is not None)
+
+    assert high_drops > low_drops
+
+
+def test_combat_ui_minimap_reflects_current_floor():
+    game = GameBoard()
+    ui = CombatUI()
+
+    ui.rebuild_minimap(game.rooms, game.room_generator.get_bounds())
+    assert len(ui.minimap_room_entities) == len(game.rooms)
+
+    ui.update(game.player)
+    assert ui.floor_text.text == f"Floor: {game.floor_number}"
+
+    # Player marker should land inside the minimap's bounding box.
+    half = ui.MINIMAP_SIZE / 2
+    cx, cy = ui.MINIMAP_POSITION
+    mx, my, _ = ui.minimap_player_marker.position
+    assert cx - half <= mx <= cx + half
+    assert cy - half <= my <= cy + half
+
+
+def test_player_death_sets_flag_and_further_attacks_dont_crash():
+    """Regression test: found via a real crash - Camera tries to follow
+    player.position with no death check. Actor.die caused reliable crashes
+    also covers second attacker batch trying to attack a now-dead player."""
+    game = GameBoard()
+    player = game.player
+    assert game.player_defeated is False
+
+    enemy1 = GruntEnemy(player.grid_x, player.grid_y + 1, game)
+    enemy2 = GruntEnemy(player.grid_x, player.grid_y - 1, game)
+    game.enemies.extend([enemy1, enemy2])
+
+    player.health = 1
+    enemy1.attack_cooldown = 0
+    enemy2.attack_cooldown = 0
+
+    enemy1.attack(player)  # lethal - destroys the player entity
+    assert game.player_defeated is True
+
+    # A second enemy taking its turn against the now-destroyed player must not crash.
+    enemy2.take_turn()
