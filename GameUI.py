@@ -15,7 +15,7 @@ class CombatUI:
             scale=(0.35, 0.06),
             color=color.black,
             position=(-0.7, 0.45),  # Left side
-            z=-1
+            z=1  # z-fighting fix
         )
         
         self.health_bar = Entity(
@@ -23,8 +23,9 @@ class CombatUI:
             model='quad',
             scale=(0.98, 0.8),
             color=color.red,
-            position=(0, 0, 0),
-            z=0
+            origin=(-0.5, 0),  # left-justify
+            position=(-0.5, 0, 0),  # flush with the background's left edge
+            z=-0.1  # z-fighting fix
         )
         
         self.health_text = Text(
@@ -90,7 +91,7 @@ class CombatUI:
         self.minimap_background = Entity(
             parent=camera.ui,
             model='quad',
-            color=color.rgba(0, 0, 0, 150),
+            color=color.rgba32(0, 0, 0, 150),
             scale=(self.MINIMAP_SIZE, self.MINIMAP_SIZE),
             position=self.MINIMAP_POSITION,
             z=-1
@@ -103,6 +104,21 @@ class CombatUI:
             scale=0.015,
             position=(self.MINIMAP_POSITION[0], self.MINIMAP_POSITION[1], -2)
         )
+
+    def set_visible(self, visible):
+        """Show/hide the whole HUD - 
+        used for beginning or ending game session since CombatUI is constructed once and reused across sessions"""
+        self.health_background.enabled = visible
+        self.health_text.enabled = visible
+        self.attack_status.enabled = visible
+        self.turn_text.enabled = visible
+        self.range_indicator.enabled = visible
+        self.equipment_text.enabled = visible
+        self.floor_text.enabled = visible
+        self.minimap_background.enabled = visible
+        self.minimap_player_marker.enabled = visible
+        for entity in self.minimap_room_entities:
+            entity.enabled = visible
 
     def _minimap_point(self, normalized_x, normalized_y):
         """Map a 0..1 normalized dungeon-space point to a camera.ui position inside the minimap box."""
@@ -187,3 +203,158 @@ class CombatUI:
             else:
                 lines.append("  (empty)")
             self.equipment_text.text = "\n".join(lines)
+
+
+class InventoryScreen:
+    """Dedicated pause-accessible inventory screen with clickable equip/unequip,
+    separate from CombatUI's always-on corner panel (which stays as the fast
+    at-a-glance/number-key view during normal play)."""
+
+    EQUIPMENT_SLOTS = ("arm", "legs", "core")
+    ROW_HEIGHT = 0.07
+    MIN_ROW_Y = -0.35
+
+    def __init__(self, on_close):
+        self.on_close = on_close
+        self.player = None
+        self.visible = False
+        self.dynamic_entities = []
+
+        self.background = Entity(
+            parent=camera.ui,
+            model='quad',
+            scale=(1.2, 1.0),
+            color=color.rgba32(10, 10, 15, 240),
+            position=(0, 0),
+            z=1,  # z-fighting fix
+            enabled=False
+        )
+        self.title = Text(
+            parent=camera.ui,
+            text="INVENTORY",
+            position=(0, 0.42),
+            scale=2.2,
+            color=color.white,
+            origin=(0, 0),
+            enabled=False,
+            z=0
+        )
+        self.close_button = Button(
+            parent=camera.ui,
+            text="Close",
+            position=(0, -0.42),
+            scale=(0.25, 0.08),
+            color=color.gray,
+            on_click=self._handle_close,
+            enabled=False,
+            z=0
+        )
+
+    def show(self, player):
+        self.player = player
+        self.visible = True
+        self.background.enabled = True
+        self.title.enabled = True
+        self.close_button.enabled = True
+        self.refresh()
+
+    def hide(self):
+        self.visible = False
+        self.background.enabled = False
+        self.title.enabled = False
+        self.close_button.enabled = False
+        self._clear_dynamic()
+
+    def _handle_close(self):
+        self.hide()
+        if self.on_close:
+            self.on_close()
+
+    def _clear_dynamic(self):
+        for entity in self.dynamic_entities:
+            destroy(entity)
+        self.dynamic_entities = []
+
+    def refresh(self):
+        """Rebuild the equipped-slot and inventory rows from current player state."""
+        self._clear_dynamic()
+        if self.player is None:
+            return
+
+        y = 0.3
+        for slot in self.EQUIPMENT_SLOTS:
+            part = self.player.equipment.get(slot)
+            self.dynamic_entities.append(Text(
+                parent=camera.ui,
+                text=f"{slot.capitalize()}: {part.name if part else '(empty)'}",
+                position=(-0.5, y),
+                scale=1.3,
+                color=color.white,
+                origin=(-0.5, 0),
+                z=0
+            ))
+            if part is not None:
+                self.dynamic_entities.append(Button(
+                    parent=camera.ui,
+                    text="Unequip",
+                    position=(0.35, y),
+                    scale=(0.2, 0.06),
+                    color=color.orange,
+                    on_click=Func(self._unequip, slot),
+                    z=0
+                ))
+            y -= self.ROW_HEIGHT
+
+        y -= 0.05
+        self.dynamic_entities.append(Text(
+            parent=camera.ui,
+            text="Inventory:",
+            position=(-0.5, y),
+            scale=1.3,
+            color=color.yellow,
+            origin=(-0.5, 0),
+            z=0
+        ))
+        y -= self.ROW_HEIGHT
+
+        if not self.player.inventory:
+            self.dynamic_entities.append(Text(
+                parent=camera.ui,
+                text="(empty)",
+                position=(-0.5, y),
+                scale=1.1,
+                color=color.gray,
+                origin=(-0.5, 0),
+                z=0
+            ))
+        else:
+            for part in list(self.player.inventory):
+                if y < self.MIN_ROW_Y:
+                    break  # keep it on-screen; a scrollable list is future work
+                self.dynamic_entities.append(Text(
+                    parent=camera.ui,
+                    text=f"{part.name} ({part.slot})",
+                    position=(-0.5, y),
+                    scale=1.1,
+                    color=color.white,
+                    origin=(-0.5, 0),
+                    z=0
+                ))
+                self.dynamic_entities.append(Button(
+                    parent=camera.ui,
+                    text="Equip",
+                    position=(0.35, y),
+                    scale=(0.2, 0.06),
+                    color=color.lime,
+                    on_click=Func(self._equip, part),
+                    z=0
+                ))
+                y -= self.ROW_HEIGHT
+
+    def _equip(self, part):
+        self.player.equip(part)
+        self.refresh()
+
+    def _unequip(self, slot):
+        self.player.unequip(slot)
+        self.refresh()
