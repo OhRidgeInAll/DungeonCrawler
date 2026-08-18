@@ -112,10 +112,14 @@ class AStarPathfinder:
         return safe_path if safe_path else None
 
     def enemy_in_vision_of(self, pos: Tuple[int, int]) -> bool:
-        """Whether any enemy's own vision_range would cover the given grid position."""
+        """Whether any enemy's own vision_range would cover the given grid position -
+        matches Enemy.take_turn()'s own vision gate (range + line-of-sight), so the
+        player's auto-walk preview stops in exactly the same cases an enemy would
+        actually notice it."""
         for enemy in self.game_board.enemies:
             vision = getattr(enemy, 'vision_range', 5)
-            if self.distance(pos, (enemy.grid_x, enemy.grid_y)) <= vision:
+            if self.distance(pos, (enemy.grid_x, enemy.grid_y)) <= vision and \
+                    self.game_board.has_line_of_sight(enemy.grid_x, enemy.grid_y, pos[0], pos[1]):
                 return True
         return False
 

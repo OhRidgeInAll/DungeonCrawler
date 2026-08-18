@@ -18,8 +18,14 @@ application.asset_folder = Path(__file__).parent
 from GameBoard import GameBoard
 from Enemy import GruntEnemy, TankEnemy, SniperEnemy, spawn_random_enemy
 from Part import LOOT_TABLE, roll_loot
+<<<<<<< Updated upstream
 from Pathfinding import MouseController
 from GameUI import CombatUI
+=======
+from Pathfinding import AStarPathfinder, MouseController
+from GameUI import CombatUI, InventoryScreen
+from LineOfSight import has_line_of_sight
+>>>>>>> Stashed changes
 from constants import grid_to_world
 
 
@@ -353,3 +359,217 @@ def test_player_death_sets_flag_and_further_attacks_dont_crash():
 
     # A second enemy taking its turn against the now-destroyed player must not crash.
     enemy2.take_turn()
+<<<<<<< Updated upstream
+=======
+
+
+def test_inventory_screen_shows_equipped_slots_and_inventory():
+    game = GameBoard()
+    player = game.player
+    screen = InventoryScreen(on_close=lambda: None)
+
+    sniper_arm = LOOT_TABLE["sniper"][0]
+    player.inventory.append(sniper_arm)
+    player.equip(sniper_arm)
+
+    grunt_legs = LOOT_TABLE["grunt"][1]
+    player.inventory.append(grunt_legs)
+
+    screen.show(player)
+    # Equipped rows: arm has a part (label + Unequip button) + 2 empty slots (label only),
+    # plus an "Inventory:" header, plus one unequipped part (label + Equip button).
+    assert len(screen.dynamic_entities) == 4 + 1 + 2
+
+    screen.hide()
+    assert screen.dynamic_entities == []
+    assert not screen.background.enabled
+
+
+def test_inventory_screen_equip_and_unequip_buttons_affect_player():
+    game = GameBoard()
+    player = game.player
+    screen = InventoryScreen(on_close=lambda: None)
+
+    sniper_arm = LOOT_TABLE["sniper"][0]
+    player.inventory.append(sniper_arm)
+    screen.show(player)
+
+    screen._equip(sniper_arm)  # what the dynamically-built "Equip" button calls
+    assert player.equipment["arm"] is sniper_arm
+    assert sniper_arm not in player.inventory
+
+    screen._unequip("arm")  # what the "Unequip" button calls
+    assert player.equipment["arm"] is None
+    assert sniper_arm in player.inventory
+
+
+def test_inventory_screen_close_hides_and_calls_callback():
+    closed = []
+    screen = InventoryScreen(on_close=lambda: closed.append(True))
+    game = GameBoard()
+    screen.show(game.player)
+
+    screen._handle_close()
+
+    assert closed == [True]
+    assert not screen.visible
+
+
+def test_line_of_sight_clear_line_with_no_blockers():
+    assert has_line_of_sight(0, 0, 5, 3, blocks_los=lambda x, y: False)
+
+
+def test_line_of_sight_blocked_by_a_cell_between_the_endpoints():
+    blocked = {(2, 2)}
+    assert not has_line_of_sight(0, 0, 4, 4, blocks_los=lambda x, y: (x, y) in blocked)
+
+
+def test_line_of_sight_not_blocked_by_the_start_or_destination_cell():
+    """Regression: an actor's own tile, or the target's tile, must never block sight -
+    only cells strictly between the two matter."""
+    endpoints_only = {(0, 0), (4, 4)}
+    assert has_line_of_sight(0, 0, 4, 4, blocks_los=lambda x, y: (x, y) in endpoints_only)
+
+
+def test_line_of_sight_cannot_slip_through_a_shared_wall_corner():
+    """Regression test for the corner-cutting bug naive Bresenham has: a diagonal step
+    between two blocking cells that share only a corner must not count as clear sight."""
+    blocked = {(1, 1), (2, 0)}  # flank the diagonal step from (1,0) to (2,1)
+    assert not has_line_of_sight(0, 0, 3, 1, blocks_los=lambda x, y: (x, y) in blocked)
+
+
+def test_line_of_sight_diagonal_gap_between_blockers_is_still_visible():
+    """A diagonal step is only blocked if BOTH corner cells block - one blocker alone
+    (a wall corner poking into the diagonal) must not cut off sight."""
+    blocked = {(1, 1)}
+    assert has_line_of_sight(0, 0, 3, 1, blocks_los=lambda x, y: (x, y) in blocked)
+
+
+def test_gameboard_line_of_sight_blocked_by_void_and_by_obstacle():
+    game = GameBoard()
+    start_room = game._get_room_by_role("start")
+    sx, sy = start_room.get_center()
+
+    # Clear sight across open floor within the same room.
+    clear_tile(game, sx + 1, sy)
+    clear_tile(game, sx + 2, sy)
+    assert game.has_line_of_sight(sx, sy, sx + 2, sy)
+
+    # An Obstacle directly between two points blocks sight.
+    game.obstacle_spawner.add_obstacle(sx + 1, sy)
+    assert not game.has_line_of_sight(sx, sy, sx + 2, sy)
+
+    # Void space (outside the dungeon entirely) also blocks sight. min_x is the global
+    # minimum x across every tile in the generated dungeon, so any cell with a smaller
+    # x - at any y - is void by definition, regardless of how this floor happened to
+    # generate. A straight horizontal line from the start room out past that boundary
+    # is guaranteed to cross void cells before reaching its destination.
+    min_x, _min_y, _max_x, _max_y = game.room_generator.get_bounds()
+    assert not game.has_line_of_sight(sx, sy, min_x - 5, sy)
+
+
+def test_enemy_cannot_attack_or_chase_player_through_a_wall():
+    game = GameBoard()
+    player = game.player
+    start_room = game._get_room_by_role("start")
+    sx, sy = start_room.get_center()
+    clear_tile(game, sx + 1, sy)
+    clear_tile(game, sx + 2, sy)
+
+    player.grid_x, player.grid_y = sx, sy
+    player.position = grid_to_world(sx, sy)
+    player.is_moving = False
+
+    game.enemies.clear()
+    enemy = GruntEnemy(sx + 2, sy, game)
+    enemy.attack_cooldown = 0
+    enemy.attack_range = 5  # rule out range as the reason an attack fails
+    enemy.vision_range = 5
+    game.enemies.append(enemy)
+
+    # Clear line: legal attack, and take_turn() would close the distance.
+    assert enemy.can_attack(player)
+
+    # Obstacle directly between them blocks both the attack and the chase.
+    game.obstacle_spawner.add_obstacle(sx + 1, sy)
+    assert not enemy.can_attack(player)
+
+    before = enemy.grid_position
+    enemy.take_turn()
+    assert enemy.grid_position == before  # didn't creep toward a player it can't see
+
+
+def test_player_try_attack_respects_line_of_sight():
+    game = GameBoard()
+    player = game.player
+    start_room = game._get_room_by_role("start")
+    sx, sy = start_room.get_center()
+    clear_tile(game, sx + 1, sy)
+    clear_tile(game, sx + 2, sy)
+
+    player.grid_x, player.grid_y = sx, sy
+    player.position = grid_to_world(sx, sy)
+    player.is_moving = False
+    player.attack_range = 5
+    player.has_attacked_this_turn = False
+
+    game.enemies.clear()
+    enemy = GruntEnemy(sx + 2, sy, game)
+    game.enemies.append(enemy)
+
+    game.obstacle_spawner.add_obstacle(sx + 1, sy)
+    assert not player.try_attack()
+    assert not player.has_attacked_this_turn
+
+    clear_tile(game, sx + 1, sy)
+    assert player.try_attack()
+    assert player.has_attacked_this_turn
+
+
+def test_enemy_in_vision_of_respects_line_of_sight():
+    game = GameBoard()
+    start_room = game._get_room_by_role("start")
+    sx, sy = start_room.get_center()
+    clear_tile(game, sx + 1, sy)
+    clear_tile(game, sx + 2, sy)
+
+    game.enemies.clear()
+    enemy = GruntEnemy(sx, sy, game)
+    enemy.vision_range = 5
+    game.enemies.append(enemy)
+    pathfinder = AStarPathfinder(game)
+
+    assert pathfinder.enemy_in_vision_of((sx + 2, sy))
+
+    game.obstacle_spawner.add_obstacle(sx + 1, sy)
+    assert not pathfinder.enemy_in_vision_of((sx + 2, sy))
+
+
+def test_quit_to_title_teardown_leaves_a_clean_slate_for_a_new_game():
+    """Regression test for the Quit to Title teardown pattern in main.py:
+    game._clear_floor_entities() (already used by advance_floor()) plus
+    player.destroy_silently(), since floor transitions deliberately preserve the
+    player but quitting to title should not. Confirms a fresh GameBoard can be built
+    right after, the same as clicking New Game a second time in the same process.
+
+    Regression note: this used to call destroy(game.player) directly, which crashes -
+    it bypasses Actor.die()'s _stop_sprite_animations() workaround for Ursina's
+    destroy() choking on SpriteSheetAnimation.animations. destroy_silently() exists
+    specifically to destroy an Actor outside of combat death without hitting that."""
+    game = GameBoard()
+    assert len(game.tiles) > 0
+    assert game.player is not None
+
+    game._clear_floor_entities()
+    if game.player is not None and not game.player_defeated:
+        game.player.destroy_silently()
+
+    assert game.tiles == []
+    assert game.enemies == []
+    assert game.pickups == []
+
+    # A brand new game must build cleanly afterward, in the same process.
+    fresh_game = GameBoard()
+    assert fresh_game.player is not None
+    assert fresh_game.floor_number == 1
+>>>>>>> Stashed changes

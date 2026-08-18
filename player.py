@@ -173,32 +173,29 @@ class Player(Actor):
         return False
     
     def try_attack(self):
+        """Attack the first legal target among game.enemies. Legality (range, team,
+        cooldown/turn-flag, line-of-sight) is entirely owned by can_attack() - this
+        just selects a candidate, it doesn't re-derive any of those checks itself."""
         if not hasattr(self, 'game') or not self.game.enemies:
             return False
-            
-        attacked = False
+
         for enemy in self.game.enemies:
-            # Calculate Manhattan distance (grid units)
-            distance = abs(self.grid_x - enemy.grid_x) + abs(self.grid_y - enemy.grid_y)
-            if distance <= self.attack_range:  # Use actual attack range
-                if self.attack(enemy):
-                    attacked = True
-                    break
-        
-        return attacked
-    
+            if self.can_attack(enemy):
+                return self.attack(enemy)
+
+        return False
+
     def try_attack_enemy_at(self, x, y):
-        """Try to attack enemy at specific grid position."""
+        """Try to attack the enemy at a specific grid position, if any. attack() already
+        re-checks can_attack() internally, so legality is handled there - no need to
+        duplicate it here."""
         if not hasattr(self, 'game') or not self.game.enemies:
             return False
-            
-        # Find enemy at the specified position
+
         for enemy in self.game.enemies:
             if enemy.grid_x == x and enemy.grid_y == y:
-                # Check if enemy is in attack range
-                distance = abs(self.grid_x - x) + abs(self.grid_y - y)
-                if distance <= self.attack_range:
-                    return self.attack(enemy)
+                return self.attack(enemy)
+
         return False
 
     def update(self):

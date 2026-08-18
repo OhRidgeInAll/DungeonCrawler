@@ -8,6 +8,7 @@ from Enemy import spawn_random_enemy
 from Staircase import Staircase
 from Pickup import Pickup
 from Part import roll_loot
+from LineOfSight import has_line_of_sight
 
 class GameBoard:
     def __init__(self):
@@ -333,6 +334,13 @@ class GameBoard:
     
     def is_position_in_dungeon(self, x, y):
         return (x, y) in self.room_generator.get_all_tiles()
+
+    def has_line_of_sight(self, x0, y0, x1, y1):
+        """Whether sight is clear between two grid cells - blocked by void/non-dungeon
+        cells (walls) and by Obstacles. Single call site for LOS so consumers (attack
+        legality, enemy vision, future fog-of-war) never reimplement this predicate."""
+        blocks_los = lambda x, y: not self.is_position_in_dungeon(x, y) or self.is_position_blocked(x, y)
+        return has_line_of_sight(x0, y0, x1, y1, blocks_los)
     
     def get_room_at_position(self, x, y):
         for room in self.rooms:
