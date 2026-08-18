@@ -18,14 +18,9 @@ application.asset_folder = Path(__file__).parent
 from GameBoard import GameBoard
 from Enemy import GruntEnemy, TankEnemy, SniperEnemy, spawn_random_enemy
 from Part import LOOT_TABLE, roll_loot
-<<<<<<< Updated upstream
-from Pathfinding import MouseController
-from GameUI import CombatUI
-=======
 from Pathfinding import AStarPathfinder, MouseController
 from GameUI import CombatUI, InventoryScreen
 from LineOfSight import has_line_of_sight
->>>>>>> Stashed changes
 from constants import grid_to_world
 
 
@@ -359,8 +354,6 @@ def test_player_death_sets_flag_and_further_attacks_dont_crash():
 
     # A second enemy taking its turn against the now-destroyed player must not crash.
     enemy2.take_turn()
-<<<<<<< Updated upstream
-=======
 
 
 def test_inventory_screen_shows_equipped_slots_and_inventory():
@@ -572,4 +565,6 @@ def test_quit_to_title_teardown_leaves_a_clean_slate_for_a_new_game():
     fresh_game = GameBoard()
     assert fresh_game.player is not None
     assert fresh_game.floor_number == 1
->>>>>>> Stashed changes
+
+
+    
