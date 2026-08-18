@@ -23,6 +23,13 @@ class Actor(Entity):
         if hasattr(self, 'on_death'):
             self.on_death()
 
+    def destroy_silently(self):
+        """Destroy this actor without treating it as a death - no on_death callback,
+        no game-over semantics. 
+        FOR DELIBERATE TEARDOWN rather than death(e.g. quitting to title)"""
+        self._stop_sprite_animations()
+        destroy(self)
+
     def _stop_sprite_animations(self):
         """Ursina's destroy() assumes entity.animations is a list of objects with
         .kill(), but SpriteSheetAnimation stores it as a dict of name -> Sequence,
