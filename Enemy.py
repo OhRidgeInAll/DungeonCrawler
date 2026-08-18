@@ -51,12 +51,16 @@ class Enemy(Actor):
             return
 
         distance = abs(self.grid_x - player.grid_x) + abs(self.grid_y - player.grid_y)
-        if distance <= self.vision_range:
-            if self.can_attack(player):
-                self.attack(player)
-            else:
-                self.move_toward_player(player.grid_x, player.grid_y)
-        # else: player not in range, wait
+        if distance > self.vision_range:
+            return  # player not in range, wait
+
+        if not self.game_board.has_line_of_sight(self.grid_x, self.grid_y, player.grid_x, player.grid_y):
+            return  # can't see the player - can't attack or chase what you can't see
+
+        if self.can_attack(player):
+            self.attack(player)
+        else:
+            self.move_toward_player(player.grid_x, player.grid_y)
 
     def move_toward_player(self, player_x, player_y):
         """Simple AI: move one step toward player if possible."""
@@ -183,6 +187,9 @@ class SniperEnemy(Enemy):
         distance = abs(self.grid_x - player.grid_x) + abs(self.grid_y - player.grid_y)
         if distance > self.vision_range:
             return
+
+        if not self.game_board.has_line_of_sight(self.grid_x, self.grid_y, player.grid_x, player.grid_y):
+            return  # can't see the player - can't attack, chase, or retreat from what you can't see
 
         if self.can_attack(player):
             self.attack(player)

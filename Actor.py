@@ -56,16 +56,26 @@ class Actor(Entity):
         """Check if this actor can attack the target."""
         if self.attack_cooldown > 0:
             return False
-        
+
         # Check team (don't attack allies)
         if hasattr(target, 'team') and target.team == self.team:
             return False
-        
+
         # Use grid distance for consistency with player's try_attack
         if hasattr(self, 'grid_x') and hasattr(target, 'grid_x'):
             # Calculate Manhattan distance (grid units)
             distance = abs(self.grid_x - target.grid_x) + abs(self.grid_y - target.grid_y)
-            return distance <= self.attack_range
+            if distance > self.attack_range:
+                return False
+
+            # Player uses `game`, Enemy uses `game_board` - same object, two names.
+            board = getattr(self, 'game_board', None) or getattr(self, 'game', None)
+            if board is not None and not board.has_line_of_sight(
+                self.grid_x, self.grid_y, target.grid_x, target.grid_y
+            ):
+                return False
+
+            return True
         else:
             # Fallback to 3D distance (manual calculation)
             distance = (self.position - target.position).length()
@@ -145,9 +155,13 @@ class Actor(Entity):
         # Create damage text as a 3D billboard entity in world space
         # Position slightly above the target
         damage_text = Text(
+            parent=scene,  # Text defaults to camera.ui (screen space); override so world coords apply
             text=f"-{damage}",
             position=(position.x, position.y + 0.5, position.z),  # World coordinates, above target
-            scale=0.5,  # World-space scale
+            # Text's internal unit is tiny (Text.size = .025), so a world-space scale needs to be
+            # much larger than a UI-space one (UI text elsewhere in the HUD uses scale ~1.5-2.2)
+            # to read as a reasonable fraction of a tile (TILE_SIZE = 1) at the game's default zoom.
+            scale=15,
             color=color.red,
             background=True,
             background_color=color.black,
