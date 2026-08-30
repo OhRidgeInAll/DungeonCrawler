@@ -21,7 +21,7 @@ from Part import LOOT_TABLE, roll_loot
 from Pathfinding import AStarPathfinder, MouseController
 from GameUI import CombatUI, InventoryScreen
 from LineOfSight import has_line_of_sight
-from constants import grid_to_world
+from constants import grid_to_world, MIN_DAMAGE
 
 
 def clear_tile(game, x, y):
@@ -536,6 +536,80 @@ def test_enemy_in_vision_of_respects_line_of_sight():
 
     game.obstacle_spawner.add_obstacle(sx + 1, sy)
     assert not pathfinder.enemy_in_vision_of((sx + 2, sy))
+
+
+def test_take_damage_applies_armor_but_never_below_min_damage():
+    game = GameBoard()
+    player = game.player
+    player.armor = 5
+
+    player.health = 100
+    dealt = player.take_damage(20)
+    assert dealt == 15
+    assert player.health == 85
+
+    # Armor larger than the raw hit still deals at least MIN_DAMAGE.
+    player.health = 100
+    dealt = player.take_damage(2)
+    assert dealt == MIN_DAMAGE
+    assert player.health == 100 - MIN_DAMAGE
+
+
+def test_attack_hit_rate_tracks_accuracy():
+    import random
+    game = GameBoard()
+    player = game.player
+    enemy = GruntEnemy(player.grid_x, player.grid_y + 1, game)
+
+    def hits_out_of(accuracy, trials, seed):
+        player.accuracy = accuracy
+        random.seed(seed)
+        hits = 0
+        for _ in range(trials):
+            enemy.health = 100
+            player.has_attacked_this_turn = False
+            before = enemy.health
+            player.attack(enemy)
+            if enemy.health < before:
+                hits += 1
+        return hits
+
+    low = hits_out_of(0.2, 500, seed=3)
+    high = hits_out_of(0.8, 500, seed=3)
+    assert high > low
+
+    # The two deterministic edges: random.random() is always in [0.0, 1.0).
+    assert hits_out_of(1.0, 50, seed=1) == 50  # guaranteed hit
+    assert hits_out_of(0.0, 50, seed=1) == 0   # guaranteed miss
+
+
+def test_missed_attack_still_consumes_the_turn_but_deals_no_damage():
+    game = GameBoard()
+    player = game.player
+    enemy = GruntEnemy(player.grid_x, player.grid_y + 1, game)
+    player.accuracy = 0.0
+    player.has_attacked_this_turn = False
+    health_before = enemy.health
+
+    attacked = player.attack(enemy)
+
+    assert attacked
+    assert enemy.health == health_before
+    assert player.has_attacked_this_turn
+
+
+def test_player_equip_armor_core_increases_armor_stat():
+    game = GameBoard()
+    player = game.player
+    tank_core = LOOT_TABLE["tank"][2]
+    base_armor = player.armor
+
+    player.inventory.append(tank_core)
+    player.equip(tank_core)
+    assert player.armor == base_armor + tank_core.modifiers.get('armor', 0)
+
+    player.unequip("core")
+    assert player.armor == base_armor
 
 
 def test_quit_to_title_teardown_leaves_a_clean_slate_for_a_new_game():

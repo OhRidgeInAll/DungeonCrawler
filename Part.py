@@ -21,7 +21,7 @@ LOOT_TABLE = {
     "tank": [
         Part("arm", "Tank Cannon Arm", {"attack_power": 8}, "tank"),
         Part("legs", "Tank Tread Legs", {"move_speed": -10, "max_health": 30}, "tank"),
-        Part("core", "Tank Armor Core", {"max_health": 40}, "tank"),
+        Part("core", "Tank Armor Core", {"max_health": 40, "armor": 3}, "tank"),
     ],
     "sniper": [
         Part("arm", "Sniper Rifle Arm", {"attack_power": 2, "attack_range": 3}, "sniper"),

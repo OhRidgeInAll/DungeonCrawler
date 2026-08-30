@@ -7,6 +7,8 @@ TILE_SIZE = 1
 GRID_COLOR = color.gray
 ATTACK_RANGE = 1.5 #Grid Units
 ATTACK_COOLDOWN = 0.5 #seconds
+BASE_ACCURACY = 0.85 #chance to hit, 0-1
+MIN_DAMAGE = 1 #armor can reduce a hit toward this floor, never below it
 
 # set by generator
 DUNGEON_BOUNDS = None  # (min_x, min_y, max_x, max_y)

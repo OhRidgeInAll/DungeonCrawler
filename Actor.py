@@ -1,6 +1,7 @@
 from ursina import *
 from constants import *
 import math
+import random
 
 class Actor(Entity):
     def __init__(self, **kwargs):
@@ -11,6 +12,8 @@ class Actor(Entity):
         self.attack_power = 10
         self.attack_cooldown = 0
         self.attack_range = ATTACK_RANGE
+        self.accuracy = BASE_ACCURACY
+        self.armor = 0
         self.hit_effect = Entity(parent=self, model='circle', scale = 1.2, color = color.red, alpha=0, z=-0.2)
     
     def update(self):
@@ -45,12 +48,17 @@ class Actor(Entity):
             sprite.animations = {}
     
     def take_damage(self, amount):
-        self.health -= amount
+        """Apply armor mitigation (never reduced below MIN_DAMAGE) and return the
+        amount actually dealt, so callers can display what really landed."""
+        mitigated = max(MIN_DAMAGE, amount - self.armor)
+        self.health -= mitigated
         self.hit_effect.animate('alpha', 0.8, duration=0.1)
         self.hit_effect.animate('alpha', 0, duration=0.3, delay=0.1)
 
         if self.health <= 0:
             self.die()
+
+        return mitigated
     
     def can_attack(self, target):
         """Check if this actor can attack the target."""
@@ -87,27 +95,37 @@ class Actor(Entity):
             # synchronously via take_damage() -> die(), so target.position would no
             # longer be readable by the time show_attack_effect() needs it.
             target_position = target.position if hasattr(target, 'position') else None
-            target.take_damage(self.attack_power)
+            # An attack attempt costs the cooldown/turn either way, hit or miss.
             self.attack_cooldown = ATTACK_COOLDOWN
-            self.show_attack_effect(target, target_position)
+
+            if random.random() < self.accuracy:
+                dealt = target.take_damage(self.attack_power)
+                self.show_attack_effect(target, target_position, damage=dealt)
+            else:
+                self.show_attack_effect(target, target_position, damage=None)
+
             return True
         return False
-    
-    def show_attack_effect(self, target, position=None):
-        """Visual effect for attacking with particle effects."""
+
+    def show_attack_effect(self, target, position=None, damage=None):
+        """Visual effect for attacking with particle effects. `damage` is the actual
+        (armor-mitigated) amount dealt, or None if the attack missed."""
         # Get target position in case  target might be destroyed)
         if position is None and hasattr(target, 'position'):
             position = target.position
         elif position is None:
             # Can't show effect without position
             return
-        
+
         # Create particle effect at target position
         self.create_attack_particles(position)
-        
-        # Also show floating damage number
-        self.show_damage_number(target, self.attack_power, position)
-        
+
+        # Also show a floating damage number, or a MISS indicator
+        if damage is None:
+            self.show_miss_indicator(position)
+        else:
+            self.show_damage_number(damage, position)
+
         # Keep the original line effect for visual connection
         # Calculate 3D distance manually
         distance_3d = (self.position - position).length()
@@ -144,14 +162,29 @@ class Actor(Entity):
             particle.animate('alpha', 0, duration=0.3)
             destroy(particle, delay=0.3)
     
-    def show_damage_number(self, target, damage, position=None):
+    def show_miss_indicator(self, position):
+        """Show a floating 'MISS' above the target, in place of a damage number."""
+        miss_text = Text(
+            parent=scene,
+            text="MISS",
+            position=(position.x, position.y + 0.5, position.z),
+            scale=15,
+            color=color.white,
+            background=True,
+            background_color=color.black,
+            billboard=True,
+            eternal=False
+        )
+        miss_text.animate_position(
+            (miss_text.position.x, miss_text.position.y + 1.0, miss_text.position.z),
+            duration=1.0,
+            curve=curve.out_expo
+        )
+        miss_text.animate('alpha', 0, duration=1.0)
+        destroy(miss_text, delay=1.0)
+
+    def show_damage_number(self, damage, position):
         """Show floating damage number above target."""
-        # Use provided position or target's position
-        if position is None and hasattr(target, 'position'):
-            position = target.position
-        elif position is None:
-            return  # Can't show damage number without position
-            
         # Create damage text as a 3D billboard entity in world space
         # Position slightly above the target
         damage_text = Text(
