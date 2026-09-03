@@ -46,7 +46,46 @@ class CombatUI:
             color=color.green,
             origin=(0, 0)
         )
-        
+
+        # Energy bar, below attack status (same left column as health)
+        self.energy_background = Entity(
+            parent=camera.ui,
+            model='quad',
+            scale=(0.35, 0.06),
+            color=color.black,
+            position=(-0.7, 0.29),
+            z=1  # z-fighting fix
+        )
+
+        self.energy_bar = Entity(
+            parent=self.energy_background,
+            model='quad',
+            scale=(0.98, 0.8),
+            color=color.cyan,
+            origin=(-0.5, 0),  # left-justify
+            position=(-0.5, 0, 0),  # flush with the background's left edge
+            z=-0.1  # z-fighting fix
+        )
+
+        self.energy_text = Text(
+            text="50/50",
+            parent=camera.ui,
+            position=(-0.7, 0.29),
+            scale=1.8,
+            color=color.white,
+            origin=(0, 0)
+        )
+
+        # Currency readout, below the energy bar
+        self.currency_text = Text(
+            text="Currency: 0",
+            parent=camera.ui,
+            position=(-0.7, 0.22),
+            scale=1.5,
+            color=color.gold,
+            origin=(0, 0)
+        )
+
         # Turn counter (top-right)
         self.turn_text = Text(
             text="Turn: 0",
@@ -111,6 +150,9 @@ class CombatUI:
         self.health_background.enabled = visible
         self.health_text.enabled = visible
         self.attack_status.enabled = visible
+        self.energy_background.enabled = visible
+        self.energy_text.enabled = visible
+        self.currency_text.enabled = visible
         self.turn_text.enabled = visible
         self.range_indicator.enabled = visible
         self.equipment_text.enabled = visible
@@ -169,6 +211,13 @@ class CombatUI:
         else:
             self.attack_status.text = "READY"
             self.attack_status.color = color.green
+
+        # Update energy bar and currency readout
+        max_energy = getattr(player, 'max_energy', 0)
+        energy_pct = max(0, player.energy / max_energy) if max_energy else 0
+        self.energy_bar.scale_x = 0.98 * energy_pct
+        self.energy_text.text = f"{int(player.energy)}/{int(max_energy)}"
+        self.currency_text.text = f"Currency: {getattr(player, 'currency', 0)}"
 
         # Update turn counter (if available)
         if hasattr(player, 'game') and hasattr(player.game, 'current_turn'):

@@ -49,6 +49,11 @@ class Player(Actor):
         self.attack_range = constants.ATTACK_RANGE
         self.has_attacked_this_turn = False
 
+        # Resources - currency has no ceiling, energy is a spendable pool (skills draw from it)
+        self.currency = 0
+        self.max_energy = constants.STARTING_MAX_ENERGY
+        self.energy = self.max_energy
+
         # Equipment / salvage system - Raw player stats TODO: Attach to stock parts
         self.base_attack_power = self.attack_power
         self.base_attack_range = self.attack_range
@@ -56,6 +61,7 @@ class Player(Actor):
         self.base_max_health = self.health
         self.base_accuracy = self.accuracy
         self.base_armor = self.armor
+        self.base_max_energy = self.max_energy
 
         self.equipment = {"arm": None, "legs": None, "core": None}
         self.inventory = []
@@ -107,6 +113,7 @@ class Player(Actor):
         max_health = self.base_max_health
         accuracy = self.base_accuracy
         armor = self.base_armor
+        max_energy = self.base_max_energy
 
         for part in self.equipment.values():
             if part is None:
@@ -117,6 +124,7 @@ class Player(Actor):
             max_health += part.modifiers.get('max_health', 0)
             accuracy += part.modifiers.get('accuracy', 0)
             armor += part.modifiers.get('armor', 0)
+            max_energy += part.modifiers.get('max_energy', 0)
 
         self.attack_power = attack_power
         self.attack_range = attack_range
@@ -124,7 +132,9 @@ class Player(Actor):
         self.max_health = max_health
         self.accuracy = accuracy
         self.armor = armor
+        self.max_energy = max_energy
         self.health = min(self.health, self.max_health)
+        self.energy = min(self.energy, self.max_energy)
 
     def move_to_grid_position(self, x, y):
         if not self.is_moving and self.can_move_to(x, y):

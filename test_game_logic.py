@@ -612,6 +612,52 @@ def test_player_equip_armor_core_increases_armor_stat():
     assert player.armor == base_armor
 
 
+def test_player_starts_with_currency_and_energy():
+    game = GameBoard()
+    player = game.player
+    assert player.currency == 0
+    assert player.max_energy > 0
+    assert player.energy == player.max_energy
+
+
+def test_energy_pool_clamps_to_max_energy_when_it_shrinks():
+    """Mirrors test_player_max_health_clamps_down_when_it_shrinks for the energy pool,
+    once a part can grant/remove max_energy."""
+    game = GameBoard()
+    player = game.player
+    energy_part = LOOT_TABLE["grunt"][2]
+    # Piggyback a max_energy modifier onto an existing part instance for this test
+    # without touching the real loot table.
+    from dataclasses import replace
+    energy_core = replace(energy_part, modifiers={**energy_part.modifiers, "max_energy": 20})
+
+    player.energy = player.max_energy
+    energy_before_equip = player.energy
+    player.inventory.append(energy_core)
+    player.equip(energy_core)
+    assert player.energy == energy_before_equip  # unchanged, no free refill
+    assert player.max_energy > energy_before_equip
+
+    boosted_max = player.max_energy
+    player.energy = boosted_max
+    player.unequip("core")
+    assert player.energy == player.max_energy  # clamped down, never above the new max
+    assert player.max_energy < boosted_max
+
+
+def test_combat_ui_reflects_energy_and_currency():
+    game = GameBoard()
+    player = game.player
+    player.currency = 42
+    player.energy = 7
+    ui = CombatUI()
+
+    ui.update(player)
+
+    assert ui.energy_text.text == f"7/{int(player.max_energy)}"
+    assert ui.currency_text.text == "Currency: 42"
+
+
 def test_quit_to_title_teardown_leaves_a_clean_slate_for_a_new_game():
     """Regression test for the Quit to Title teardown pattern in main.py:
     game._clear_floor_entities() (already used by advance_floor()) plus
