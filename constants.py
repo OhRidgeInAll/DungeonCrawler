@@ -5,6 +5,17 @@ from ursina import *
 DEFAULT_GRID_SIZE = 8
 TILE_SIZE = 1
 GRID_COLOR = color.gray
+
+TILESET_NAME = 'Itch release raw tileset 01'
+TILESET_COLS = 8
+TILESET_ROWS = 15
+
+from TileDefs import FLOOR_TILE_INDICES
+
+def tile_uv(index):
+    """texture_offset for a tile index in the sheet, for use with texture_scale=(1/TILESET_COLS, 1/TILESET_ROWS)."""
+    row, col = divmod(index, TILESET_COLS)
+    return (col / TILESET_COLS, (TILESET_ROWS - 1 - row) / TILESET_ROWS)
 ATTACK_RANGE = 1.5 #Grid Units
 ATTACK_COOLDOWN = 0.5 #seconds
 BASE_ACCURACY = 0.85 #chance to hit, 0-1

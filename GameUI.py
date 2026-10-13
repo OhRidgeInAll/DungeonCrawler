@@ -1,3 +1,5 @@
+import webbrowser
+
 from ursina import *
 from constants import *
 
@@ -23,7 +25,7 @@ class CombatUI:
             model='quad',
             scale=(0.98, 0.8),
             color=color.red,
-            origin=(-0.5, 0),  # left-justify
+            origin=(-0.5, 0), 
             position=(-0.5, 0, 0),  # flush with the background's left edge
             z=-0.1  # z-fighting fix
         )
@@ -47,7 +49,6 @@ class CombatUI:
             origin=(0, 0)
         )
 
-        # Energy bar, below attack status (same left column as health)
         self.energy_background = Entity(
             parent=camera.ui,
             model='quad',
@@ -62,7 +63,7 @@ class CombatUI:
             model='quad',
             scale=(0.98, 0.8),
             color=color.cyan,
-            origin=(-0.5, 0),  # left-justify
+            origin=(-0.5, 0), 
             position=(-0.5, 0, 0),  # flush with the background's left edge
             z=-0.1  # z-fighting fix
         )
@@ -407,3 +408,127 @@ class InventoryScreen:
     def _unequip(self, slot):
         self.player.unequip(slot)
         self.refresh()
+
+
+class FollowMeScreen:
+    """Main-menu "Follow Me" page listing the project's socials.
+
+    Each entry is a clickable button that opens the URL in the system browser via
+    stdlib webbrowser (no extra dependency), with the raw URL printed underneath so
+    the links are still usable if the browser can't be launched (some frozen builds,
+    kiosk setups, etc.)."""
+
+    LINKS = (
+        ("Patreon",   "https://www.patreon.com/Oh_Riginal"),
+        ("itch.io",   "https://how-original.itch.io"),
+        ("Twitter/X", "https://twitter.com/Oh_Ridge_In_All"),
+        ("Portfolio", "https://ohridgeinall.github.io/Dev-Portfolio/"),
+    )
+    ROW_HEIGHT = 0.16
+    FIRST_ROW_Y = 0.24
+
+    def __init__(self, on_close):
+        self.on_close = on_close
+        self.visible = False
+
+        self.background = Entity(
+            parent=camera.ui,
+            model='quad',
+            scale=(2, 2),
+            color=color.rgba32(15, 15, 25),
+            position=(0, 0),
+            z=1,  # camera.ui draws lower z in front - keep this behind the rows
+            enabled=False
+        )
+        self.title = Text(
+            parent=camera.ui,
+            text="FOLLOW ME",
+            position=(0, 0.42),
+            scale=3,
+            color=color.white,
+            origin=(0, 0),
+            enabled=False,
+            z=0
+        )
+        self.status = Text(
+            parent=camera.ui,
+            text="",
+            position=(0, -0.32),
+            scale=1.1,
+            color=color.yellow,
+            origin=(0, 0),
+            enabled=False,
+            z=0
+        )
+
+        self.link_entities = []
+        y = self.FIRST_ROW_Y
+        for name, url in self.LINKS:
+            self.link_entities.append(Button(
+                parent=camera.ui,
+                text=name,
+                position=(0, y),
+                scale=(0.4, 0.09),
+                color=color.gray,
+                on_click=Func(self.open_link, url),
+                enabled=False,
+                z=0
+            ))
+            self.link_entities.append(Text(
+                parent=camera.ui,
+                text=url,
+                position=(0, y - 0.07),
+                scale=0.9,
+                color=color.light_gray,
+                origin=(0, 0),
+                enabled=False,
+                z=0
+            ))
+            y -= self.ROW_HEIGHT
+
+        self.close_button = Button(
+            parent=camera.ui,
+            text="Back",
+            position=(0, -0.42),
+            scale=(0.3, 0.09),
+            color=color.gray,
+            on_click=self._handle_close,
+            enabled=False,
+            z=0
+        )
+
+    def open_link(self, url):
+        """Open a social link in the system browser; fall back to the on-screen URL."""
+        try:
+            opened = webbrowser.open(url)
+        except Exception as e:  # no browser registered, sandboxed build, etc.
+            print(f"[FollowMe] Could not open {url}: {e}")
+            opened = False
+        if opened:
+            self.status.text = "Opened in your browser."
+            self.status.color = color.lime
+        else:
+            self.status.text = "Couldn't open a browser - the URL above is copyable from this screen."
+            self.status.color = color.yellow
+
+    def show(self):
+        self.visible = True
+        self.status.text = ""
+        self._set_enabled(True)
+
+    def hide(self):
+        self.visible = False
+        self._set_enabled(False)
+
+    def _set_enabled(self, enabled):
+        self.background.enabled = enabled
+        self.title.enabled = enabled
+        self.status.enabled = enabled
+        self.close_button.enabled = enabled
+        for entity in self.link_entities:
+            entity.enabled = enabled
+
+    def _handle_close(self):
+        self.hide()
+        if self.on_close:
+            self.on_close()

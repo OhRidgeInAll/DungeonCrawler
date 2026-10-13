@@ -11,7 +11,7 @@ if getattr(sys, 'frozen', False):
     application.models_compressed_folder = _base / 'models_compressed'
 from GameBoard import *
 from constants import *
-from GameUI import CombatUI, InventoryScreen
+from GameUI import CombatUI, InventoryScreen, FollowMeScreen
 from Pathfinding import MouseController
 
 # Pause menu class - WITH FIXES (reduced alpha, z-ordering)
@@ -96,7 +96,7 @@ class MainMenu:
     """Fully opaque -
     covers any leftover HUD from a previous session also hides combatuii, hopefully clean."""
 
-    def __init__(self, on_new_game, on_quit):
+    def __init__(self, on_new_game, on_follow_me, on_quit):
         self.visible = True
         self.background = Entity(
             parent=camera.ui,
@@ -124,10 +124,19 @@ class MainMenu:
             on_click=on_new_game,
             z=0
         )
+        self.follow_me_button = Button(
+            parent=camera.ui,
+            text="Follow Me",
+            position=(0, -0.15),
+            scale=(0.3, 0.1),
+            color=color.gray,
+            on_click=on_follow_me,
+            z=0
+        )
         self.quit_button = Button(
             parent=camera.ui,
             text="Quit",
-            position=(0, -0.15),
+            position=(0, -0.3),
             scale=(0.3, 0.1),
             color=color.gray,
             on_click=on_quit,
@@ -139,6 +148,7 @@ class MainMenu:
         self.background.enabled = True
         self.title.enabled = True
         self.new_game_button.enabled = True
+        self.follow_me_button.enabled = True
         self.quit_button.enabled = True
 
     def hide(self):
@@ -146,6 +156,7 @@ class MainMenu:
         self.background.enabled = False
         self.title.enabled = False
         self.new_game_button.enabled = False
+        self.follow_me_button.enabled = False
         self.quit_button.enabled = False
 
 
@@ -208,18 +219,13 @@ class GameOverScreen:
         self.subtitle.enabled = False
         self.return_button.enabled = False
 
-#This creates a window
 app = Ursina()
 print("Ursina app initialized")
 
 DEBUG_MODE = True  # dev-only conveniences (e.g. full heal); flip off before shipping a build
 
-# Game state: "menu" (no game object exists yet), "playing", "paused", or "game_over".
-# Introduced to fix a real bug - player could move while paused
-# also folds feath-freeze from player death fix into game over screen
 GAME_STATE = "menu"
 
-# Per-game-session objects - None until "New Game" is clicked; torn down and rebuilt per session
 game = None
 mouse_controller = None
 
@@ -274,6 +280,7 @@ def quit_to_title():
     pause_menu.hide()
     inventory_screen.hide()
     game_over_screen.hide()
+    follow_me_screen.hide()
     ui.set_visible(False)
 
     GAME_STATE = "menu"
@@ -286,6 +293,13 @@ def open_inventory():
 def close_inventory():
     pause_menu.show()
 
+def open_follow_me():
+    main_menu.hide()
+    follow_me_screen.show()
+
+def close_follow_me():
+    main_menu.show()
+
 def resume_from_pause():
     global GAME_STATE
     GAME_STATE = "playing"
@@ -294,10 +308,12 @@ def resume_from_pause():
 ui = CombatUI()
 ui.set_visible(False)  # nothing to show until a game actually starts
 
-main_menu = MainMenu(on_new_game=start_new_game, on_quit=lambda: application.quit())
+main_menu = MainMenu(on_new_game=start_new_game, on_follow_me=open_follow_me,
+                     on_quit=lambda: application.quit())
 pause_menu = PauseMenu(on_open_inventory=open_inventory, on_quit_to_title=quit_to_title)
 inventory_screen = InventoryScreen(on_close=close_inventory)
 game_over_screen = GameOverScreen(on_return_to_title=quit_to_title)
+follow_me_screen = FollowMeScreen(on_close=close_follow_me)
 
 def input(key):
     global GAME_STATE
@@ -308,12 +324,15 @@ def input(key):
         return  # all gameplay input blocked while paused - menu buttons handle themselves
 
     if GAME_STATE != "playing":
-        return  # "menu" / "game_over" - menu buttons handle themselves
+       
+        if key == 'escape' and follow_me_screen.visible:
+            follow_me_screen._handle_close()
+        return
 
     if game.player_defeated:
         return  # died this frame, before update() has transitioned to "game_over" yet
 
-    # Handle movement keys - queue actions instead of immediate movement
+    # queue action
     x, y = game.player.grid_position
 
     if key == 'w':
@@ -329,17 +348,15 @@ def input(key):
         game.queue_player_action('move', x + 1, y)
         game.process_turn()
 
-    # Space for attack
+
     elif key == 'space':
         game.player.try_attack()
         game.process_turn()
 
-    # ESC for pause menu
     elif key == 'escape':
         GAME_STATE = "paused"
         pause_menu.show()
 
-    # Number keys equip the corresponding inventory item
     elif key in ('1', '2', '3', '4', '5', '6', '7', '8', '9'):
         idx = int(key) - 1
         if idx < len(game.player.inventory):
@@ -354,12 +371,12 @@ def input(key):
     elif key == 'p' and DEBUG_MODE:
         print_diagnostics(tag="[DEBUG]")
 
-    # Right mouse button: click-to-move via pathfinding
+    # pathfind mouse | My worst enemy is queueing turns
     elif key == 'right mouse down':
         if mouse.world_point:
             mouse_controller.on_right_click(mouse.world_point)
 
-    # Any manual movement key cancels an in-progress auto-walk
+    # cancels auto walk for input
     if key in ('w', 'a', 's', 'd'):
         mouse_controller.stop()
 
@@ -374,7 +391,6 @@ def update():
         game_over_screen.show(game.floor_number, game.current_turn)
         return
 
-    # Update game state
     game.update()
     mouse_controller.update()
 
@@ -386,7 +402,6 @@ def update():
         _last_seen_floor = game.floor_number
         ui.rebuild_minimap(game.rooms, game.room_generator.get_bounds())
 
-    # Tile highlighting
     if mouse.hovered_entity and isinstance(mouse.hovered_entity, GameTile):
         mouse.hovered_entity.highlight()
         for tile in game.tiles:
@@ -400,18 +415,14 @@ def update():
     camera_target = Vec3(game.player.position.x, game.player.position.y, -20)
     camera.position = lerp(camera.position, camera_target, time.dt * 5)
     
-    # Visualize vision radius (optional debugging)
     # visualize_vision_radius()
 
-# Optional helper for debugging vision
 def visualize_vision_radius():
     """Visualize player's vision radius for debugging."""
-    # Clear previous vision indicators
     for entity in scene.entities:
         if hasattr(entity, '_vision_indicator'):
             destroy(entity)
     
-    # Show player vision range
     player_x, player_y = game.player.grid_position
     vision_range = 5  # Default vision range
     
@@ -429,5 +440,4 @@ def visualize_vision_radius():
                         _vision_indicator=True
                     )
 
-# Run game
 app.run()
